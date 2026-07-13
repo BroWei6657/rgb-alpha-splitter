@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'">
+    <title>RGB Alpha Splitter</title>
+    <script src="./theme-bootstrap.js"></script>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>RGB Alpha Splitter</h1>
+          <p>Full NDI / MOV / Test Pattern 输入，实时拆分 RGB 与 Alpha 输出</p>
+        </div>
+        <div class="topbar-controls">
+          <label class="toolbar-field" for="themeMode">主题</label>
+          <select id="themeMode" aria-label="界面主题">
+            <option value="system">跟随系统</option>
+            <option value="light">浅色</option>
+            <option value="dark">深色</option>
+          </select>
+          <button id="toggleDiagnosticsBtn" type="button" aria-pressed="true">隐藏诊断</button>
+        </div>
+        <div class="statusbar">
+          <span id="bridgeState">NDI Bridge 检测中</span>
+          <span id="signalState">信号待机</span>
+          <span id="frameRate">预览 0 fps</span>
+          <span id="engineState">后端检测中</span>
+          <span id="versionState">v-</span>
+          <span id="sourceState">未连接</span>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="sidebar" aria-label="输入源和输出控制">
+          <section class="control-section">
+            <div class="mode-switch" role="group" aria-label="输入模式">
+              <button id="ndiModeBtn" class="active" type="button">NDI 模式</button>
+              <button id="urlModeBtn" type="button">URL 模式</button>
+            </div>
+            <div id="ndiModePanel">
+            <div class="section-head">
+              <h2>输入源</h2>
+              <button id="refreshNdiBtn" type="button">刷新 NDI</button>
+            </div>
+            <label class="field">
+              <span>局域网 NDI 源</span>
+              <select id="ndiSourceSelect">
+                <option value="">正在搜索...</option>
+              </select>
+            </label>
+            <div class="button-row">
+              <button id="connectNdiBtn" type="button">连接 NDI</button>
+              <button id="disconnectBtn" type="button">断开</button>
+            </div>
+            <label class="check">
+              <input id="autoReconnect" type="checkbox" checked>
+              <span>断流自动重连</span>
+            </label>
+            <p class="hint" id="ndiHint">未发现可用 NDI Bridge 时，仅可使用测试源和文件输入。</p>
+            </div>
+            <div id="urlModePanel" hidden>
+              <label class="field">
+                <span>网页或媒体 URL</span>
+                <input id="urlInput" type="url" placeholder="https://example.com/overlay" spellcheck="false">
+              </label>
+              <div class="compact-grid">
+                <label class="field">
+                  <span>源 viewport</span>
+                  <select id="urlViewportMode">
+                    <option value="auto">自动</option>
+                    <option value="natural">媒体自然尺寸</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>页面状态</span>
+                  <strong id="urlPageType">未载入</strong>
+                </label>
+              </div>
+              <div id="urlViewportCustom" class="compact-grid" hidden>
+                <label class="field"><span>宽度</span><input id="urlViewportWidth" type="number" min="64" max="4096" value="1920"></label>
+                <label class="field"><span>高度</span><input id="urlViewportHeight" type="number" min="64" max="2160" value="1080"></label>
+              </div>
+              <label class="check">
+                <input id="urlTransparent" type="checkbox" checked>
+                <span>强制透明背景</span>
+              </label>
+              <label class="check">
+                <input id="urlAllowLan" type="checkbox">
+                <span>允许访问局域网 URL</span>
+              </label>
+              <div class="button-row">
+                <button id="loadUrlBtn" type="button">载入 URL</button>
+                <button id="refreshUrlBtn" type="button">刷新页面</button>
+                <button id="stopUrlBtn" type="button">停止</button>
+              </div>
+              <p class="hint" id="urlHint">支持 HTTP/HTTPS 网页、图片和浏览器可播放的视频地址。</p>
+            </div>
+          </section>
+
+          <section class="control-section">
+            <h2>测试与文件</h2>
+            <button id="testPatternBtn" type="button">启动测试源</button>
+            <label class="file-control">
+              <span>MOV / 视频 / 图片</span>
+              <input id="fileInput" type="file" accept=".mov,video/quicktime,video/*,image/*">
+            </label>
+            <p class="hint">MOV 是否可解码取决于系统/Chromium 支持的编码，建议 ProRes 4444 或 H.264 MOV 先测试。</p>
+          </section>
+
+          <section class="control-section">
+            <h2>Alpha 处理</h2>
+            <label class="field inline">
+              <span>增益</span>
+              <input id="alphaGain" type="range" min="0" max="3" value="1" step="0.05">
+              <strong id="alphaGainValue">1.00x</strong>
+            </label>
+            <label class="check">
+              <input id="invertAlpha" type="checkbox">
+              <span>反相 Alpha</span>
+            </label>
+            <label class="check">
+              <input id="showCheckerboard" type="checkbox" checked>
+              <span>输入预览显示透明棋盘</span>
+            </label>
+          </section>
+
+          <section class="control-section">
+            <h2>信号与色彩</h2>
+            <div class="compact-grid color-grid">
+              <label class="field"><span>输出分辨率</span><select id="outputResolution"></select></label>
+              <label class="field"><span>输出帧率</span><select id="outputFrameRate"></select></label>
+              <label class="field"><span>扫描方式</span><select id="scanMode">
+                <option value="progressive">逐行</option>
+                <option value="interlaced-tff">1080i TFF</option>
+                <option value="interlaced-bff">1080i BFF</option>
+              </select></label>
+              <label class="field"><span>显示模式</span><select id="scalingMode">
+                <option value="fit">完整显示留黑</option>
+                <option value="fill">居中裁满</option>
+                <option value="stretch">拉伸铺满</option>
+                <option value="crop">手动裁切</option>
+              </select></label>
+            </div>
+            <div class="compact-grid color-grid">
+              <label class="field">
+                <span>输入色域</span>
+                <select id="sourcePrimaries">
+                  <option value="rec709">Rec.709</option>
+                  <option value="rec2020">Rec.2020 SDR</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>输入范围</span>
+                <select id="sourceRange">
+                  <option value="full">Full</option>
+                  <option value="limited">Limited</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>输出色域</span>
+                <select id="outputPrimaries">
+                  <option value="rec709">Rec.709</option>
+                  <option value="rec2020">Rec.2020 SDR</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>输出范围</span>
+                <select id="outputRange">
+                  <option value="limited" selected>Limited</option>
+                  <option value="full">Full</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>GPU 选择</span>
+                <select id="gpuPreference">
+                  <option value="high-performance" selected>高性能 GPU</option>
+                  <option value="system">系统自动</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>控制页预览</span>
+                <select id="previewPolicy">
+                  <option value="lightweight" selected>轻量 480p / 15fps</option>
+                  <option value="full">完整预览</option>
+                  <option value="paused">暂停预览</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>NDI 同步</span>
+                <select id="syncMode">
+                  <option value="stable" selected>稳定同步</option>
+                  <option value="low-latency">低延迟</option>
+                </select>
+              </label>
+            </div>
+            <div id="customOutputResolution" class="compact-grid" hidden>
+              <label class="field"><span>自定义宽度</span><input id="customOutputWidth" type="number" min="64" max="4096" value="1920"></label>
+              <label class="field"><span>自定义高度</span><input id="customOutputHeight" type="number" min="64" max="2160" value="1080"></label>
+            </div>
+            <div class="button-row">
+              <button id="restoreAutoColorBtn" type="button">恢复自动识别</button>
+              <span id="colorDetectionState" class="inline-status">等待输入</span>
+            </div>
+            <div id="cropControls" hidden>
+              <div class="compact-grid crop-grid">
+                <label class="field"><span>左 %</span><input id="cropLeft" type="number" min="0" max="99.9" step="0.1" value="0"></label>
+                <label class="field"><span>上 %</span><input id="cropTop" type="number" min="0" max="99.9" step="0.1" value="0"></label>
+                <label class="field"><span>右 %</span><input id="cropRight" type="number" min="0" max="99.9" step="0.1" value="0"></label>
+                <label class="field"><span>下 %</span><input id="cropBottom" type="number" min="0" max="99.9" step="0.1" value="0"></label>
+              </div>
+              <label class="check"><input id="cropLockAspect" type="checkbox" checked><span>锁定输出宽高比</span></label>
+              <button id="resetCropBtn" type="button">恢复全画面</button>
+            </div>
+            <p class="hint" id="signalHint">默认 Rec.709 Limited SDR，Gamma 2.4。</p>
+          </section>
+
+          <section class="control-section">
+            <h2>全屏输出</h2>
+            <label class="field">
+              <span>RGB 输出显示器</span>
+              <select id="rgbDisplaySelect"></select>
+            </label>
+            <label class="field">
+              <span>Alpha 输出显示器</span>
+              <select id="alphaDisplaySelect"></select>
+            </label>
+            <label class="check">
+              <input id="autoFullscreen" type="checkbox" checked>
+              <span>打开后自动全屏</span>
+            </label>
+            <div class="button-row">
+              <button id="rgbWindowBtn" type="button">RGB 输出窗口</button>
+              <button id="alphaWindowBtn" type="button">Alpha 输出窗口</button>
+            </div>
+            <div class="button-row">
+              <button id="fullscreenBtn" type="button">全部输出全屏</button>
+              <button id="snapshotBtn" type="button">保存快照</button>
+            </div>
+            <p class="hint">输出进程会直接读取共享帧，并移动到所选显示器。</p>
+          </section>
+
+          <section id="diagnosticsSection" class="control-section">
+            <h2>诊断</h2>
+            <div class="button-row diagnostics-actions">
+              <button id="openLogsBtn" type="button">打开日志目录</button>
+              <span id="logPathState" class="inline-status" title=""></span>
+            </div>
+            <dl class="metrics">
+              <div><dt>输入</dt><dd id="metricInput">-</dd></div>
+              <div><dt>分辨率</dt><dd id="metricResolution">-</dd></div>
+              <div><dt>帧时间</dt><dd id="metricFrameTime">-</dd></div>
+              <div><dt>NDI连接</dt><dd id="metricConnections">-</dd></div>
+              <div><dt>接收帧</dt><dd id="metricReceived">-</dd></div>
+              <div><dt>丢弃帧</dt><dd id="metricDropped">-</dd></div>
+              <div><dt>帧队列</dt><dd id="metricQueue">-</dd></div>
+              <div><dt>RGB FPS</dt><dd id="metricRgbOutputFps">0</dd></div>
+              <div><dt>Alpha FPS</dt><dd id="metricAlphaOutputFps">0</dd></div>
+              <div><dt>GPU</dt><dd id="metricGpuAdapter">-</dd></div>
+              <div><dt>GPU队列</dt><dd id="metricGpuQueue">0</dd></div>
+              <div><dt>覆盖帧</dt><dd id="metricGpuOverwritten">0</dd></div>
+              <div><dt>P95帧时间</dt><dd id="metricGpuP95">0 ms</dd></div>
+              <div><dt>重连</dt><dd id="metricReconnects">0</dd></div>
+              <div><dt>同步</dt><dd id="metricSyncMode">-</dd></div>
+              <div><dt>主时钟</dt><dd id="metricClockSource">-</dd></div>
+              <div><dt>时钟抖动</dt><dd id="metricClockJitter">0 us</dd></div>
+              <div><dt>双路偏差</dt><dd id="metricPresentSkew">0 us</dd></div>
+              <div><dt>运行时</dt><dd id="metricRuntime">Browser</dd></div>
+            </dl>
+          </section>
+        </aside>
+
+        <section class="stage" aria-label="实时画面预览">
+          <article class="panel panel-main">
+            <div class="panel-head">
+              <h2>输入预览</h2>
+              <span id="sourceMeta">测试源 960 x 540</span>
+            </div>
+            <div class="canvas-wrap checker" id="sourceWrap">
+              <canvas id="sourceCanvas" width="960" height="540"></canvas>
+              <div id="cropOverlay" class="crop-overlay" hidden><div class="crop-selection" id="cropSelection"></div></div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2>RGB 输出预览</h2>
+              <span>Alpha 固定为 255</span>
+            </div>
+            <canvas id="rgbCanvas" width="960" height="540"></canvas>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Alpha 输出预览</h2>
+              <span>灰度显示透明度</span>
+            </div>
+            <canvas id="alphaCanvas" width="960" height="540"></canvas>
+          </article>
+
+          <article class="panel log-panel">
+            <div class="panel-head">
+              <h2>事件日志</h2>
+              <button id="clearLogBtn" type="button">清空</button>
+            </div>
+            <ol id="eventLog" class="event-log"></ol>
+          </article>
+        </section>
+      </section>
+
+      <video id="hiddenVideo" playsinline muted loop></video>
+      <img id="hiddenImage" alt="">
+    </main>
+
+    <script src="./src/ndi-bridge-client.js"></script>
+    <script src="./src/app.js"></script>
+  </body>
+</html>

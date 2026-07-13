@@ -1,0 +1,91 @@
+{
+  "name": "rgb-alpha-splitter",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Full NDI / MOV / test-pattern RGB and alpha splitter.",
+  "author": "RGB Alpha Splitter Project",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "install": "node -e \"console.log('Use the platform native build script before packaging.')\"",
+    "smoke": "electron . --smoke-test",
+    "performance": "node scripts/performance.js",
+    "soak:30m": "node scripts/soak.js 30",
+    "soak:4h": "node scripts/soak.js 240",
+    "serve": "python -m http.server 4173",
+    "build:native": "powershell -ExecutionPolicy Bypass -File scripts/build-native.ps1",
+    "build:native:mac": "bash scripts/build-native-macos.sh",
+    "check": "node --check main.js && node --check logger.js && node --check theme-bootstrap.js && node --check preload.js && node --check output-preload.js && node --check gpu-output-preload.js && node --check src/ndi-bridge-client.js && node --check src/app.js && node --check src/output.js && node scripts/test-signal.js",
+    "check:version": "node scripts/check-version.js",
+    "dist": "npm run check:version && npm run check && npm run build:native && electron-builder --win nsis",
+    "dist:mac": "npm run check:version && npm run check && npm run build:native:mac && electron-builder --mac dmg zip"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
+    "node-gyp": "^11.4.2"
+  },
+  "build": {
+    "appId": "com.ndialphasplitter.desktop",
+    "electronDist": "node_modules/electron/dist",
+    "productName": "RGB Alpha Splitter",
+    "asar": true,
+    "asarUnpack": [
+      "native/*.node"
+    ],
+    "npmRebuild": false,
+    "files": [
+      "index.html",
+      "styles.css",
+      "main.js",
+      "logger.js",
+      "theme-bootstrap.js",
+      "preload.js",
+      "output-preload.js",
+      "gpu-output-preload.js",
+      "output.html",
+      "src/**/*",
+      "native/ndi-node.node",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "RGB-Alpha-Splitter-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "category": "public.app-category.video",
+      "minimumSystemVersion": "11.0",
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "Discover and receive NDI video sources on the local network.",
+        "NSBonjourServices": [
+          "_ndi._tcp",
+          "_ndi._udp"
+        ],
+        "NSHighResolutionCapable": true
+      },
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "RGB-Alpha-Splitter-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "include": "installer.nsh",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "RGB Alpha Splitter"
+    }
+  }
+}
