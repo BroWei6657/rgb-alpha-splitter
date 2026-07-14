@@ -11,7 +11,7 @@
   <body>
     <main class="app">
       <header class="topbar">
-        <div>
+        <div class="brand-block">
           <h1>RGB Alpha Splitter</h1>
           <p>Full NDI / MOV / Test Pattern 输入，实时拆分 RGB 与 Alpha 输出</p>
         </div>
@@ -22,15 +22,15 @@
             <option value="light">浅色</option>
             <option value="dark">深色</option>
           </select>
-          <button id="toggleDiagnosticsBtn" type="button" aria-pressed="true">隐藏诊断</button>
+          <button id="toggleDiagnosticsBtn" class="button-quiet" type="button" aria-pressed="true">隐藏诊断</button>
         </div>
-        <div class="statusbar">
-          <span id="bridgeState">NDI Bridge 检测中</span>
-          <span id="signalState">信号待机</span>
-          <span id="frameRate">预览 0 fps</span>
-          <span id="engineState">后端检测中</span>
-          <span id="versionState">v-</span>
-          <span id="sourceState">未连接</span>
+        <div class="statusbar" aria-label="运行状态">
+          <span id="bridgeState" class="status-chip">NDI Bridge 检测中</span>
+          <span id="signalState" class="status-chip">信号待机</span>
+          <span id="frameRate" class="status-chip">预览 0 fps</span>
+          <span id="engineState" class="status-chip">后端检测中</span>
+          <span id="versionState" class="status-chip status-version">v-</span>
+          <span id="sourceState" class="status-chip">未连接</span>
         </div>
       </header>
 
@@ -44,7 +44,7 @@
             <div id="ndiModePanel">
             <div class="section-head">
               <h2>输入源</h2>
-              <button id="refreshNdiBtn" type="button">刷新 NDI</button>
+              <button id="refreshNdiBtn" class="button-quiet" type="button">刷新 NDI</button>
             </div>
             <label class="field">
               <span>局域网 NDI 源</span>
@@ -53,8 +53,8 @@
               </select>
             </label>
             <div class="button-row">
-              <button id="connectNdiBtn" type="button">连接 NDI</button>
-              <button id="disconnectBtn" type="button">断开</button>
+              <button id="connectNdiBtn" class="button-primary" type="button">连接 NDI</button>
+              <button id="disconnectBtn" class="button-quiet" type="button">断开</button>
             </div>
             <label class="check">
               <input id="autoReconnect" type="checkbox" checked>
@@ -94,9 +94,9 @@
                 <span>允许访问局域网 URL</span>
               </label>
               <div class="button-row">
-                <button id="loadUrlBtn" type="button">载入 URL</button>
-                <button id="refreshUrlBtn" type="button">刷新页面</button>
-                <button id="stopUrlBtn" type="button">停止</button>
+                <button id="loadUrlBtn" class="button-primary" type="button">载入 URL</button>
+                <button id="refreshUrlBtn" class="button-quiet" type="button">刷新页面</button>
+                <button id="stopUrlBtn" class="button-danger" type="button">停止</button>
               </div>
               <p class="hint" id="urlHint">支持 HTTP/HTTPS 网页、图片和浏览器可播放的视频地址。</p>
             </div>
@@ -104,7 +104,7 @@
 
           <section class="control-section">
             <h2>测试与文件</h2>
-            <button id="testPatternBtn" type="button">启动测试源</button>
+            <button id="testPatternBtn" class="button-secondary" type="button">启动测试源</button>
             <label class="file-control">
               <span>MOV / 视频 / 图片</span>
               <input id="fileInput" type="file" accept=".mov,video/quicktime,video/*,image/*">
@@ -203,7 +203,7 @@
               <label class="field"><span>自定义高度</span><input id="customOutputHeight" type="number" min="64" max="2160" value="1080"></label>
             </div>
             <div class="button-row">
-              <button id="restoreAutoColorBtn" type="button">恢复自动识别</button>
+              <button id="restoreAutoColorBtn" class="button-quiet" type="button">恢复自动识别</button>
               <span id="colorDetectionState" class="inline-status">等待输入</span>
             </div>
             <div id="cropControls" hidden>
@@ -234,12 +234,12 @@
               <span>打开后自动全屏</span>
             </label>
             <div class="button-row">
-              <button id="rgbWindowBtn" type="button">RGB 输出窗口</button>
-              <button id="alphaWindowBtn" type="button">Alpha 输出窗口</button>
+              <button id="rgbWindowBtn" class="button-secondary" type="button">RGB 输出窗口</button>
+              <button id="alphaWindowBtn" class="button-secondary" type="button">Alpha 输出窗口</button>
             </div>
             <div class="button-row">
-              <button id="fullscreenBtn" type="button">全部输出全屏</button>
-              <button id="snapshotBtn" type="button">保存快照</button>
+              <button id="fullscreenBtn" class="button-primary" type="button">全部输出全屏</button>
+              <button id="snapshotBtn" class="button-quiet" type="button">保存快照</button>
             </div>
             <p class="hint">输出进程会直接读取共享帧，并移动到所选显示器。</p>
           </section>
@@ -247,7 +247,7 @@
           <section id="diagnosticsSection" class="control-section">
             <h2>诊断</h2>
             <div class="button-row diagnostics-actions">
-              <button id="openLogsBtn" type="button">打开日志目录</button>
+              <button id="openLogsBtn" class="button-quiet" type="button">打开日志目录</button>
               <span id="logPathState" class="inline-status" title=""></span>
             </div>
             <dl class="metrics">
@@ -275,7 +275,7 @@
         </aside>
 
         <section class="stage" aria-label="实时画面预览">
-          <article class="panel panel-main">
+          <article class="panel panel-main monitor-panel">
             <div class="panel-head">
               <h2>输入预览</h2>
               <span id="sourceMeta">测试源 960 x 540</span>
@@ -286,7 +286,7 @@
             </div>
           </article>
 
-          <article class="panel">
+          <article class="panel channel-panel channel-rgb">
             <div class="panel-head">
               <h2>RGB 输出预览</h2>
               <span>Alpha 固定为 255</span>
@@ -294,7 +294,7 @@
             <canvas id="rgbCanvas" width="960" height="540"></canvas>
           </article>
 
-          <article class="panel">
+          <article class="panel channel-panel channel-alpha">
             <div class="panel-head">
               <h2>Alpha 输出预览</h2>
               <span>灰度显示透明度</span>
@@ -305,7 +305,7 @@
           <article class="panel log-panel">
             <div class="panel-head">
               <h2>事件日志</h2>
-              <button id="clearLogBtn" type="button">清空</button>
+              <button id="clearLogBtn" class="button-quiet" type="button">清空</button>
             </div>
             <ol id="eventLog" class="event-log"></ol>
           </article>

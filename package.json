@@ -1,6 +1,6 @@
 {
   "name": "rgb-alpha-splitter",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Full NDI / MOV / test-pattern RGB and alpha splitter.",
   "author": "RGB Alpha Splitter Project",

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'">
+    <title>Overlay Link Lab</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <header class="app-bar">
+      <div>
+        <p class="eyebrow">单线 KEY / FILL 模拟平台</p>
+        <h1>Overlay Link Lab</h1>
+      </div>
+      <span class="protocol-badge">OLK-HDMI-1.0</span>
+    </header>
+
+    <main>
+      <section class="control-band" aria-label="模拟控制">
+        <label>
+          <span>测试场景</span>
+          <select id="patternSelect">
+            <option value="lower-third">Lower third</option>
+            <option value="scoreboard">Scoreboard</option>
+            <option value="corner-bug">Corner bug</option>
+          </select>
+        </label>
+        <label class="range-control">
+          <span>KEY 增益 <output id="gainValue">1.00x</output></span>
+          <input id="gainRange" type="range" min="0" max="2" step="0.05" value="1" aria-label="KEY 增益" aria-valuetext="1.00x">
+        </label>
+        <label class="switch-control">
+          <input id="motionToggle" type="checkbox" checked>
+          <span>动态源</span>
+        </label>
+        <label class="switch-control">
+          <input id="invertToggle" type="checkbox">
+          <span>反转 KEY</span>
+        </label>
+        <label class="switch-control fault-switch">
+          <input id="faultToggle" type="checkbox">
+          <span>注入链路错误</span>
+        </label>
+        <div class="command-group">
+          <button id="runButton" type="button">暂停</button>
+          <button id="resetButton" type="button" class="secondary">重置</button>
+        </div>
+      </section>
+
+      <section class="metric-grid" aria-label="链路预算">
+        <article class="metric">
+          <span>输入 TMDS</span>
+          <strong id="tmdsMetric">17.82 Gb/s</strong>
+          <small>HDMI 2.0 上限 18 Gb/s</small>
+        </article>
+        <article class="metric">
+          <span>双行缓存</span>
+          <strong id="bufferMetric">15.0 KiB</strong>
+          <small>FILL RGB + KEY 8-bit</small>
+        </article>
+        <article class="metric">
+          <span>流水线延迟</span>
+          <strong id="latencyMetric">14.8-29.6 us</strong>
+          <small>不含 HDMI PHY 延迟</small>
+        </article>
+      </section>
+
+      <section class="transport-section" aria-labelledby="transportHeading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">PC 输出</p>
+            <h2 id="transportHeading">3840 x 2160 @ 60 Hz 传输帧</h2>
+          </div>
+          <div class="live-status">
+            <span id="statusDot" aria-hidden="true"></span>
+            <span id="linkStatus" aria-live="polite">链路完整</span>
+          </div>
+        </div>
+        <div class="transport-frame">
+          <canvas id="transportCanvas" width="640" height="360" role="img" aria-label="左半区域为 FILL，右半区域为 KEY，每一源行在垂直方向重复两次"></canvas>
+          <div class="transport-label fill-label">FILL · 1920 px</div>
+          <div class="transport-label key-label">KEY · 1920 px</div>
+          <div class="split-line" aria-hidden="true"></div>
+        </div>
+        <div class="signal-flow" aria-label="信号处理流程">
+          <span>GPU 打包</span><b aria-hidden="true">→</b>
+          <span>HDMI 2.0</span><b aria-hidden="true">→</b>
+          <span>FPGA 双行缓存</span><b aria-hidden="true">→</b>
+          <span>同步双 HDMI</span>
+        </div>
+      </section>
+
+      <section class="outputs-section" aria-labelledby="outputsHeading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">硬件拆分结果</p>
+            <h2 id="outputsHeading">同步输出与合成检查</h2>
+          </div>
+          <span id="frameCounter" class="frame-counter">Frame 000000</span>
+        </div>
+        <div class="output-grid">
+          <figure>
+            <figcaption><span class="swatch fill-swatch"></span>HDMI 1 · FILL</figcaption>
+            <canvas id="fillCanvas" width="320" height="180" role="img" aria-label="从传输帧拆出的彩色 FILL 输出"></canvas>
+          </figure>
+          <figure>
+            <figcaption><span class="swatch key-swatch"></span>HDMI 2 · KEY</figcaption>
+            <canvas id="keyCanvas" width="320" height="180" role="img" aria-label="从传输帧拆出的灰度 KEY 输出"></canvas>
+          </figure>
+          <figure>
+            <figcaption><span class="swatch composite-swatch"></span>切换台合成预览</figcaption>
+            <canvas id="compositeCanvas" width="320" height="180" role="img" aria-label="FILL 和 KEY 在背景画面上的合成结果"></canvas>
+          </figure>
+        </div>
+      </section>
+
+      <section class="validation-section" aria-labelledby="validationHeading">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">理论与数据校验</p>
+            <h2 id="validationHeading">协议断言</h2>
+          </div>
+          <span id="simFps">0.0 sim fps</span>
+        </div>
+        <ul id="validationList" class="validation-list"></ul>
+      </section>
+    </main>
+
+    <script src="../src/transport-core.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

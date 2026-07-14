@@ -777,7 +777,7 @@ function createWindow() {
             controlPlaneResult.crop.scalingMode !== "crop" || !controlPlaneResult.gpuRuntimeAccepted || !controlPlaneResult.uiUpgrade ||
             controlPlaneResult.cropHandleCount !== 8 || controlPlaneResult.lowLatency.syncMode !== "low-latency" ||
             controlPlaneResult.stableSync.syncMode !== "stable" || !controlPlaneResult.logStatus.available ||
-            controlPlaneResult.narrowLayout.workspaceColumns !== 1 || controlPlaneResult.narrowLayout.horizontalOverflow) {
+            controlPlaneResult.narrowLayout.workspaceColumns !== 2 || controlPlaneResult.narrowLayout.horizontalOverflow) {
           throw new Error(`Control-plane validation failed: ${JSON.stringify(controlPlaneResult)}`);
         }
         const gpuSharedTextureProbe = await probeGpuSharedTexture();

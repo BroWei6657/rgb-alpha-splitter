@@ -3,6 +3,24 @@
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/) 的版本化结构。
 This file follows the versioned structure of [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.1] - 2026-07-15
+
+### 中文
+
+- 重新梳理控制台信息层级，使用稳定的顶部命令栏、运行状态轨和RGB/Alpha通道标识。
+- 调整响应式断点，在1166px宽度下继续保留控制栏与监看区双栏布局，窄屏控制区改为紧凑网格。
+- 增强主次操作、键盘焦点、文件选择、禁用状态及减少动态偏好的视觉反馈。
+- 保持全部1.2.0输入、输出、GPU、色彩、裁切、同步和安全接口不变。
+- 将此前未批准的1.3.0版本标记纠正为1.2.1；独立Overlay研究目录继续与应用运行链路隔离。
+
+### English
+
+- Reworked the control-console hierarchy with a stable command bar, runtime status rail, and distinct RGB/Alpha channel cues.
+- Adjusted responsive breakpoints so the control and monitoring columns remain visible at 1166 px, with a compact control grid on narrower windows.
+- Improved visual feedback for primary and secondary actions, keyboard focus, file selection, disabled states, and reduced-motion preferences.
+- Preserved every v1.2.0 input, output, GPU, color, crop, synchronization, and security interface.
+- Corrected the previously unapproved v1.3.0 version marker to v1.2.1; the isolated Overlay research directory remains outside the application runtime.
+
 ## [1.2.0] - 2026-07-14
 
 - 产品更名为 RGB Alpha Splitter，并保留原位升级兼容性。 / Renamed the product while retaining in-place upgrade compatibility.

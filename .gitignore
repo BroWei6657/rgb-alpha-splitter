@@ -17,6 +17,7 @@ logs/
 cache/
 .tmp-video-frames/
 *.log
+vlc-log.txt
 packaged-smoke*.json
 
 # Local agent and editor state

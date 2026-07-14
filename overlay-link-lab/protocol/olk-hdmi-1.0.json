@@ -1,0 +1,33 @@
+{
+  "id": "OLK-HDMI-1.0",
+  "transport": {
+    "timing": "3840x2160p60",
+    "activeWidth": 3840,
+    "activeHeight": 2160,
+    "totalWidth": 4400,
+    "totalHeight": 2250,
+    "pixelClockHz": 594000000,
+    "colorFormat": "RGB444",
+    "bitsPerComponent": 8,
+    "quantization": "full",
+    "hdcp": false
+  },
+  "outputs": {
+    "count": 2,
+    "timing": "1920x1080p60",
+    "activeWidth": 1920,
+    "activeHeight": 1080,
+    "totalWidth": 2200,
+    "totalHeight": 1125,
+    "pixelClockHz": 148500000
+  },
+  "mapping": {
+    "leftHalf": "fill-rgb",
+    "rightHalf": "key-gray8-replicated-to-rgb",
+    "verticalRepeat": 2
+  },
+  "faultOutput": {
+    "fill": "black",
+    "key": "black"
+  }
+}

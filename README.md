@@ -2,10 +2,13 @@
 
 [中文](#中文说明) | [English](#english)
 
-当前版本 / Current version: **1.2.0**
+当前版本 / Current version: **1.2.1**
 
 `package.json` 是唯一版本来源；打包前使用 `npm run check:version` 校验锁文件和更新日志。
 `package.json` is the single version source; run `npm run check:version` before packaging.
+
+单线 HDMI / Thunderbolt KEY/FILL 硬件研究与无硬件模拟位于 [overlay-link-lab](overlay-link-lab/README.md)，旧应用运行链路保持独立。
+Single-cable HDMI / Thunderbolt KEY/FILL research and hardware-free simulation are available in [overlay-link-lab](overlay-link-lab/README.md), isolated from the application runtime.
 
 ## 中文说明
 
@@ -14,6 +17,14 @@
 项目源码采用 [MIT License](LICENSE)。NDI SDK、NDI Runtime 和 NDI 商标受 Vizrt
 单独条款约束，不包含在本仓库中。详见
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+### v1.2.1 重点功能
+
+- 控制台采用更清晰的命令栏、状态轨和RGB/Alpha通道视觉层级。
+- 1166px宽度继续保留控制栏与监看区双栏，较窄窗口使用紧凑控制网格。
+- 主次操作、键盘焦点、禁用状态和文件选择控件具有一致反馈。
+- 保持1.2.0的NDI、URL、本地媒体、测试图、GPU、色彩、裁切、同步和输出功能不变。
+- 将此前未批准的1.3.0版本标记纠正为1.2.1。
 
 ### v1.2.0 重点功能
 
@@ -231,6 +242,14 @@ macOS 构建声明了本地网络用途与 NDI Bonjour 服务，首次搜索 NDI
 - 正式演出建议使用固定分辨率和帧率，并将拆分逻辑迁移到 GPU shader。
 
 ## English
+
+### v1.2.1 Highlights
+
+- The console now uses a clearer command bar, status rail, and distinct RGB/Alpha channel hierarchy.
+- The control and monitoring columns remain side by side at 1166 px, while narrower windows use a compact control grid.
+- Primary and secondary actions, keyboard focus, disabled states, and file selection now provide consistent feedback.
+- All v1.2.0 NDI, URL, local-media, test-pattern, GPU, color, crop, synchronization, and output behavior is preserved.
+- The previously unapproved v1.3.0 version marker has been corrected to v1.2.1.
 
 ### Overview
 
