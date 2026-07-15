@@ -2,291 +2,124 @@
 
 [中文](#中文说明) | [English](#english)
 
-当前版本 / Current version: **1.2.1**
-
-`package.json` 是唯一版本来源；打包前使用 `npm run check:version` 校验锁文件和更新日志。
-`package.json` is the single version source; run `npm run check:version` before packaging.
-
-单线 HDMI / Thunderbolt KEY/FILL 硬件研究与无硬件模拟位于 [overlay-link-lab](overlay-link-lab/README.md)，旧应用运行链路保持独立。
-Single-cable HDMI / Thunderbolt KEY/FILL research and hardware-free simulation are available in [overlay-link-lab](overlay-link-lab/README.md), isolated from the application runtime.
+当前稳定版本：**1.2.1**
+Current stable version: **1.2.1**
 
 ## 中文说明
 
-### 许可证与 NDI 要求
+### 项目简介
 
-项目源码采用 [MIT License](LICENSE)。NDI SDK、NDI Runtime 和 NDI 商标受 Vizrt
-单独条款约束，不包含在本仓库中。详见
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+RGB Alpha Splitter 是一款面向实时视频制作的桌面工具，可接收 Full NDI、URL、
+本地视频/图片或测试图，将输入画面拆分为 RGB（Fill）和 Alpha（Key）两路画面，
+并通过独立窗口或扩展显示器全屏输出。
 
-### v1.2.1 重点功能
+本程序输出的是普通显卡桌面窗口，适合软件监看、转播制作和没有专业Fill/Key硬件
+时的工作流程。它不能替代带genlock的SDI输出卡或硬件级Fill/Key同步设备。
 
-- 控制台采用更清晰的命令栏、状态轨和RGB/Alpha通道视觉层级。
-- 1166px宽度继续保留控制栏与监看区双栏，较窄窗口使用紧凑控制网格。
-- 主次操作、键盘焦点、禁用状态和文件选择控件具有一致反馈。
-- 保持1.2.0的NDI、URL、本地媒体、测试图、GPU、色彩、裁切、同步和输出功能不变。
-- 将此前未批准的1.3.0版本标记纠正为1.2.1。
+### 下载与首次运行
 
-### v1.2.0 重点功能
+当前主要验证平台为Windows 10/11 x64。请从
+[GitHub Releases](https://github.com/BroWei6657/rgb-alpha-splitter/releases)
+下载最新安装包。
 
-- 工程日志优先写入安装目录 `logs/`，无权限时回退到用户应用数据目录。
-- 控制界面支持跟随系统、浅色和深色主题，可隐藏诊断区并适配窄屏窗口。
-- NDI 稳定模式使用 FrameSync，低延迟模式保留 latest-frame 直接接收。
-- Windows 使用 RGB 优先、Alpha 后备的 DXGI 显示时钟并提供双路时序诊断。
-- 手动裁切支持八方向拖拽和实时源像素尺寸显示。
-- 性能验收基于帧率、帧时间、丢帧和资源占用，不绑定指定硬件型号。
+1. 下载 `RGB-Alpha-Splitter-Setup-1.2.1.exe`。
+2. 使用Release页面提供的 `SHA256SUMS.txt` 校验安装包。
+3. 运行安装程序并选择安装目录。
+4. 如果要使用NDI模式，请先安装兼容的 **NDI Runtime**，然后重新启动本程序。
+5. 第一次搜索NDI源时，允许Windows防火墙中的专用网络访问。
 
-这是一个面向正式桌面软件的 Full NDI / MOV / 测试源输入工程雏形，用于把输入画面实时拆分成 RGB 与 Alpha 两路，并支持预览、独立窗口和拓展屏全屏输出。
+当前Windows安装包未进行数字签名，因此Windows可能显示SmartScreen提示。请只从本项目
+GitHub Release下载，并在运行前核对SHA-256。
 
-## 当前已实现
+> **NDI Runtime与NDI SDK不同：**普通用户只需要NDI Runtime。只有从源码重新编译
+> 原生模块的开发者才需要NDI SDK、Visual Studio和Node.js。
 
-- 测试源输入：用于排查渲染、Alpha 拆分、输出窗口和全屏投屏链路。
-- MOV / 视频 / 图片输入：通过本地文件选择载入，MOV 解码能力取决于系统和 Chromium 支持的编码。
-- URL 模式：通过隔离的离屏浏览器载入 HTTP/HTTPS 网页、图片或浏览器可播放的视频，并把页面透明度拆分为 RGB 与 Alpha。
-- 输入所有权：NDI、URL、本地媒体和测试图使用 generation token，过期输入不能覆盖当前信号。
-- 广播 SDR 管理：Rec.709/Rec.2020、Full/Limited、Gamma 2.4、HD/UHD 常用帧率与 1080i 场序预设。
-- Windows GPU 优先：D3D11共享纹理、原生RGB/Alpha子窗口和最新帧呈现线程；失败时自动恢复WebGL兼容输出。
-- 输出节拍：本地媒体按所选有理数帧率发布，D3D调度器按绝对截止时间Present；源帧不足时重复最后一帧，过快时仅保留最新帧。
-- 自动输入识别：读取NDI FourCC、分辨率、帧率、场类型与XML metadata，支持按输入源手动锁定色域和范围。
-- 独立输出控制：分辨率、帧率、扫描方式和显示模式分开设置，支持留黑、裁满、拉伸和手动裁切。
-- URL制作工具：自然尺寸/自定义viewport、预览框选裁切、冻结提示和仅由用户触发的页面刷新。
-- 安全 URL Session：默认禁止 localhost 和私有网段；需要局域网页面时必须显式开启“允许访问局域网 URL”。
-- RGB / Alpha 拆分：每帧拆为 RGB 输出预览与 Alpha 灰度预览。
-- Alpha 调整：支持 Alpha 增益和 Alpha 反相。
-- 输出窗口：RGB 与 Alpha 可分别打开独立窗口，拖到拓展屏后全屏。
-- 诊断信息：运行状态、FPS、帧时间、输入源、分辨率和事件日志。
-- NDI Bridge 接口：Electron `main.js` / `preload.js` 已预留 NDI 源搜索、连接和断开接口。
+未安装NDI Runtime时，程序仍可启动，URL、本地媒体和测试图模式仍可使用；NDI源搜索、
+连接和接收不可用。只需接收NDI信号时，建议直接安装对应系统的Runtime：
 
-## NDI 接入状态
+- [Windows版NDI Runtime v6官方下载](https://ndi.link/NDIRedistV6)
+- [macOS版NDI Runtime v6官方下载](https://ndi.link/NDIRedistV6Apple)
+- [NDI Tools官方下载说明页](https://ndi.video/tools/)（可选，包含其他NDI工具）
+- [DistroAV的NDI Runtime安装说明](https://github.com/DistroAV/DistroAV/wiki/1.-Installation#required-components---ndi-runtime)（第三方参考）
 
-浏览器页面不能直接搜索或接收局域网 NDI 源，因为 NDI 需要本机 SDK / DLL 调用能力。Electron 桌面版已接入 NDI 6 原生模块：
+安装完成后请重新启动RGB Alpha Splitter。本项目不捆绑或再分发NDI Runtime、NDI Tools或SDK。
 
-```text
-renderer UI
-  -> window.ndiBridge
-  -> preload.js
-  -> main.js ipcMain
-  -> native/ndi-node.node
-  -> NDI SDK / NDI Runtime
-```
+### NDI使用前检查
 
-正式输出采用独立的数据通路：
+- 发送端与本机应处于可互通的局域网，Windows网络配置文件建议设为“专用”。
+- 防火墙需要允许发送端程序、NDI Runtime及RGB Alpha Splitter进行局域网通信。
+- vMix或其他发送端必须实际输出包含Alpha的Full NDI信号；普通NDI视频通常不含Alpha。
+- 连接后检查界面显示的分辨率、帧率、像素格式和“含Alpha/无Alpha”状态。
+- 自动识别的色域或范围不正确时，可手动调整，并可使用“恢复自动识别”。
+- 稳定同步模式用于改善输出节奏；低延迟模式使用最新帧策略。两者都不等同于硬件genlock。
 
-```text
-NDI SDK receiver thread
-  -> Windows named shared-memory double buffer
-  -> RGB output renderer -> WebGL RGB shader
-  -> Alpha output renderer -> WebGL Alpha shader
-```
+### 主要功能
 
-控制窗口不再向输出窗口复制 Canvas。两个输出由 Main 创建为独立
-`BrowserWindow`，各自通过 `output-preload.js` 直接读取共享帧。控制窗口重载、
-最小化或 Renderer 恢复时，输出数据通路不受影响。
+- **输入模式：**Full NDI、HTTP/HTTPS URL、本地视频/图片和测试图。
+- **通道拆分：**RGB输出与Alpha灰度输出，支持Alpha增益和反相。
+- **Windows GPU优先：**D3D11原生双输出，失败时自动切换兼容后端。
+- **信号与色彩：**Rec.709/Rec.2020 SDR、Full/Limited、常用HD/UHD分辨率、
+  分数帧率和1080i TFF/BFF输入处理。
+- **画面适配：**完整显示留黑、居中裁满、拉伸和八方向手动裁切。
+- **URL工具：**自然尺寸/自定义viewport、透明背景、冻结提示和手动刷新。
+- **独立输出：**RGB与Alpha窗口可分别选择显示器并全屏，主窗口最小化不应暂停输出。
+- **控制预览：**轻量、完整和暂停三档；独立输出开启后默认优先保证输出性能。
+- **诊断：**实际输出FPS、帧时间、队列、GPU、时钟、连接状态和工程日志。
+- **界面：**跟随系统、浅色和深色主题，可隐藏诊断区并适配窄屏窗口。
 
-测试图、图片和本地视频由控制 Renderer 解码/绘制，并在输出开启时以最高约
-30 fps 发布到同一共享双缓冲；控制预览降至约 15 fps。NDI 正式输入仍由 C++
-接收线程直接发布，不经过这条 IPC 兼容路径。
+### 快速使用
 
-当前实现可以搜索局域网 NDI 源、连接指定源、在独立线程接收 BGRA/BGRX
-视频帧，并将最新 RGBA 帧送入 WebGL RGB/Alpha 拆分与输出管线。接收端只
-保留最新帧，不会因 UI 短暂卡顿积累延迟。
+1. 启动程序，选择“NDI模式”或“URL模式”；也可以载入本地文件或启动测试源。
+2. NDI模式下刷新源列表、选择发送端并连接；URL模式下输入地址并点击“载入URL”。
+3. 确认输入预览、输入格式、色域和范围。自动识别不正确时再进行手动调整。
+4. 设置输出分辨率、帧率、扫描方式和显示模式。
+5. 分别选择RGB和Alpha目标显示器，打开输出窗口或点击“全部输出全屏”。
+6. 正式制作时以诊断区的 `RGB FPS` 和 `Alpha FPS` 为准；顶部FPS表示控制预览帧率。
 
-源为 BGRA 时界面显示“含 Alpha”；源为 BGRX 时显示“无 Alpha”，Alpha
-输出为白色。这通常意味着上游没有启用带透明通道的 Full NDI 输出。
+### 常见问题
 
-## 文件结构
+| 现象 | 检查方法 |
+| --- | --- |
+| 找不到NDI源 | 确认已安装NDI Runtime、发送端正在输出、设备处于同一网络，并检查防火墙和网络配置文件。 |
+| NDI Bridge不可用 | 安装或修复[Windows版NDI Runtime v6](https://ndi.link/NDIRedistV6)后重启程序；普通用户不需要安装NDI SDK。 |
+| Alpha输出全白或全黑 | 检查发送端是否真正输出带Alpha的Full NDI/媒体内容，不要仅依靠Alpha增益补偿。 |
+| 局域网URL被阻止 | 默认禁止私有网段；确认地址可信后，显式开启“允许访问局域网URL”。 |
+| MOV或视频无法播放 | 解码能力取决于操作系统和Chromium支持的编码，可先转为受支持的H.264或其他常用格式。 |
+| 输出帧率低 | 使用轻量或暂停控制预览，确认输出帧率与显示器刷新率合理，并查看GPU、队列和P95指标。 |
+| 主窗口最小化后预览变慢 | 控制预览可能主动降帧；应检查独立输出窗口及诊断区的RGB/Alpha实际FPS。 |
+| 页面长时间无新画面 | URL模式只显示冻结状态，不自动刷新；确认网页状态后使用“刷新页面”。 |
 
-```text
-index.html                 UI 入口
-styles.css                 桌面控制台样式
-src/app.js                 输入、拆分、预览、输出、诊断逻辑
-src/ndi-bridge-client.js   Renderer 侧 NDI Bridge 客户端
-main.js                    Electron 主进程和 NDI IPC 接口
-preload.js                 安全暴露 window.ndiBridge
-native/README.md           NDI 原生模块接口说明
-package.json               Electron 工程脚本
-```
+### 日志与诊断
 
-## 运行方式
-
-### 免安装预览
-
-直接双击 `index.html`，可以使用测试源和本地 MOV / 视频 / 图片输入。
-
-### 本地静态服务
-
-```bash
-npm run serve
-```
-
-然后打开：
+打包程序优先把日志写入安装目录下的 `logs/`。如果安装目录不可写，会自动回退到：
 
 ```text
-http://127.0.0.1:4173/
+%LOCALAPPDATA%\RGB Alpha Splitter\logs\
 ```
 
-### Electron 桌面模式
+诊断区会显示实际日志目录，并提供“打开日志目录”按钮。排错时请提供问题发生时间、输入模式、
+输出格式、GPU/兼容后端状态和相关日志片段。日志可能包含设备名、NDI源名或脱敏后的URL信息，
+公开分享前仍应先检查内容。
 
-需要先安装依赖：
+### 当前限制
 
-```bash
-npm install
-npm run build:native
-npm run check:version
-npm run smoke
-npm start
-```
+- 当前主要完成Windows D3D11实机验证；macOS接口和构建脚本保留，但Intel与Apple Silicon
+  的运行和长时间稳定性仍待实机验证。
+- 本程序当前只处理视频画面，不接收或输出NDI/URL媒体音频。
+- 不声明真实2160p60双输出已稳定支持；请依据目标设备进行实测。
+- 普通扩展显示器不提供硬件genlock、扫描线同步或物理SDI Fill/Key同步。
+- 五小时稳定性报告使用1080p60合成源验证DXGI双输出，没有连接真实NDI发送端，
+  因此不代表NDI FrameSync网络接收的五小时验收。
+- URL和本地媒体的编解码能力受Electron/Chromium和操作系统支持范围限制。
 
-`npm run smoke` 会用隐藏 Electron 窗口检查 NDI Runtime、preload、显示器枚举和
-WebGL、独立输出和 URL 离屏 RGBA 发布，输出 `SMOKE_RESULT` 后自动退出。运行冒烟测试前请先关闭正式程序。
+### 从源码运行
 
-### macOS 开发与打包
+普通安装用户不需要本节工具。Windows源码构建需要：
 
-支持 macOS 11 及以上系统，包含 Intel `x64` 和 Apple Silicon `arm64` 两条构建
-路径。需要先安装：
-
-- NDI SDK for Apple，默认路径 `/Library/NDI SDK for Apple`；
-- NDI Runtime 或包含 `libndi.dylib` 的 NDI Tools；
-- Xcode Command Line Tools；
-- Node.js 和 npm。
-
-如果 SDK 安装在其他位置，请先设置：
-
-```bash
-export NDI_SDK_DIR="/your/path/to/NDI SDK for Apple"
-```
-
-然后执行：
-
-```bash
-npm install
-npm run build:native:mac
-npm run check
-npm run smoke
-npm run dist:mac
-```
-
-DMG 和 ZIP 输出到 `release/`，文件名包含当前架构。`dist:mac` 必须在对应架构
-的 Mac 上运行；macOS 原生模块和 DMG 不能在 Windows 上交叉生成。向其他用户
-公开分发前，还应配置 Apple Developer ID、Hardened Runtime 和 notarization。
-
-macOS 构建声明了本地网络用途与 NDI Bonjour 服务，首次搜索 NDI 源时系统会请求
-“本地网络”权限，需要允许该权限。
-
-当前 `package.json` 已声明 Electron。网络受限或未安装依赖时，`npm start` 不会可用。
-
-## 实现说明与性能边界
-
-- v1.1.2 Windows构建通过DXGI优先选择高性能GPU，也可以改为系统自动或指定适配器。
-- NDI的RGBA/BGRA、UYVY/UYVA、NV12、I420/YV12和P216/PA16均保留原始平面并直接上传GPU；
-  CPU RGBA转换只用于兼容输出和控制预览。
-- 独立输出开启后默认使用约854x480、15fps轻量预览，也可以选择完整预览或暂停预览。
-- GPU状态显示适配器、队列、覆盖帧、上传/渲染/Present耗时、P95帧时间和设备移除原因。
-- URL通过Electron shared texture导入；GPU输出窗口使用sandbox和不加载原生模块的最小preload。
-- P216/PA16使用R16/R16G16纹理保持高精度YUV与Alpha；Alpha增益和反相在GPU shader中处理。
-- RGB 色彩转换在 GPU shader 中完成，Alpha 不参与色域、Gamma 或范围变换。
-- 1080i GPU输出在逐行显示器上采用前后帧运动判断与Bob/Weave组合；
-  普通显卡窗口不等同于具备 genlock 的物理隔行 SDI 输出。
-- macOS保持相同UI、IPC、输入、色彩和预览功能，继续使用`compatibility`共享内存/WebGL后端；
-  Intel与Apple Silicon构建和运行仍需在Mac实机验证，本版本不声明Metal支持。
-
-- C++ 接收线程向 NDI SDK 请求最佳质量格式，并把原始打包或平面数据提交给D3D11；
-  JavaScript不参与GPU输出的逐像素换序或拆分。
-- 最新帧写入 Windows 命名共享内存双缓冲，写端用原子序号发布，读端在复制前后
-  校验序号，避免撕裂帧。共享区最大支持 4096 x 2160 RGBA。
-- RGB 和 Alpha 使用两个独立 Renderer，直接把共享内存帧上传到各自 WebGL
-  纹理；输出帧不再经过 Main-to-Renderer 整帧 IPC 或控制页 Canvas 拷贝。
-- 任一输出打开后，控制页 NDI 监看自动降至约 15 fps，正式输出仍按源帧/显示器
-  刷新率运行，降低非高配电脑的监看开销。
-- RGB/Alpha 拆分由 WebGL fragment shader 完成，可随 NDI 源动态分辨率工作。
-- NDI 模式只在收到新帧时上传纹理和刷新 RGB/Alpha 输出；静态图片只渲染
-  一次，文件视频只在播放时间变化时渲染。
-- Electron 已关闭渲染器后台节流、后台计时器节流和遮挡窗口节流。主控制窗口
-  最小化或被其他窗口遮挡时，NDI 接收和两个输出窗口仍持续刷新。
-- 正式输出不依赖 `requestAnimationFrame`：两个独立输出使用固定共享帧轮询，
-  控制 Renderer 由 Electron Main 发送带 ACK 的帧时钟，最小化时不会被 Chromium
-  降低 rAF 频率，也不会积压时钟消息。
-- 应用使用 `prevent-app-suspension`、禁用 Windows 原生窗口遮挡计算，并把主进程
-  优先级提高到 Above Normal。诊断区会显示 RGB/Alpha 两路实际输出 FPS。
-- 顶部 FPS 明确标记为“预览”，输出开启后控制预览会主动降帧；正式输出帧率请
-  以诊断区的 `RGB FPS` / `Alpha FPS` 为准。
-- 每个进程使用独立的系统临时 Chromium 磁盘缓存，并禁用 GPU shader 磁盘缓存，
-  避免重复启动或异常缓存 ACL 导致 `Unable to create cache` 错误。Local Storage
-  仍保留在用户数据目录，显示器和 Alpha 设置不会丢失。
-- 原生诊断提供 NDI 连接数、接收帧、SDK 丢弃帧、队列深度和最后帧年龄。
-- 连续 2 秒无视频帧时界面进入断流报警；启用“断流自动重连”后，连续 5 秒
-  无帧会重建接收器，并以 10 秒为重试冷却时间。重连期间保持最后一帧输出。
-- RGB 与 Alpha 可以分别绑定到指定显示器，并记住显示器选择和自动全屏设置。
-- 应用使用单实例保护；主渲染进程异常退出时，一分钟内最多自动恢复三次，
-  避免无限崩溃循环。
-- Windows GPU输出由原生D3D11子窗口直接呈现，不再从共享区复制到JavaScript；
-  共享内存仅保留给控制预览、macOS和Windows兼容后端。
-- 两个显卡桌面输出窗口共享同一源帧，但普通扩展屏不提供 SDI Fill/Key 所需的
-  genlock。需要广播级严格同步时仍应使用专业输出硬件。
-
-## vMix 联调检查
-
-1. 在 vMix 中启用带 Alpha 的 NDI 输出，并确认字幕输入本身包含透明通道。
-2. 本机防火墙允许 vMix 与本程序进行 NDI 网络通信，网络配置文件保持一致。
-3. 启动本程序后刷新 NDI 源，选择 vMix 对应输出并连接。
-4. 输入信息应显示实际分辨率、帧率和“含 Alpha”。若显示“无 Alpha”，问题在
-   上游信号格式，不应通过 Alpha 增益补偿。
-5. 在“全屏输出”中分别选择 RGB 与 Alpha 所在显示器，再打开输出窗口；选择
-   “打开后自动全屏”时，窗口会直接移动到对应显示器并进入全屏。
-6. 可临时停止 vMix NDI 输出测试看门狗：2 秒后应报警，5 秒后应开始自动重连，
-   输出保持最后一帧，源恢复后状态回到“NDI 正常”。
-
-## 使用注意
-
-- MOV 文件如果无法播放，通常是编码不被 Chromium 支持，不是输入逻辑错误。
-- NDI 源有 Alpha 的前提是上游确实输出带 Alpha 的格式；否则 Alpha 预览会接近全白或全黑。
-- 正式演出建议使用固定分辨率和帧率，并将拆分逻辑迁移到 GPU shader。
-
-## English
-
-### v1.2.1 Highlights
-
-- The console now uses a clearer command bar, status rail, and distinct RGB/Alpha channel hierarchy.
-- The control and monitoring columns remain side by side at 1166 px, while narrower windows use a compact control grid.
-- Primary and secondary actions, keyboard focus, disabled states, and file selection now provide consistent feedback.
-- All v1.2.0 NDI, URL, local-media, test-pattern, GPU, color, crop, synchronization, and output behavior is preserved.
-- The previously unapproved v1.3.0 version marker has been corrected to v1.2.1.
-
-### Overview
-
-RGB Alpha Splitter is an Electron desktop application that receives Full NDI,
-URL, local media, or test-pattern input and produces independent RGB and Alpha
-outputs. It supports control previews, standalone windows, and fullscreen output
-on extended displays.
-
-### Features
-
-- Full NDI discovery and reception with RGBA/BGRA, UYVY/UYVA, NV12, I420/YV12,
-  P216, and PA16 GPU upload paths.
-- URL input through an isolated offscreen browser with transparent backgrounds,
-  viewport control, freeze detection, manual refresh, and normalized cropping.
-- Local video, image, and generated test-pattern input.
-- Rec.709/Rec.2020 SDR, Full/Limited range conversion, fractional frame rates,
-  and 1080i TFF/BFF handling.
-- Windows D3D11 GPU-first RGB/Alpha presentation with automatic compatibility
-  fallback.
-- NDI FrameSync stable mode and latest-frame low-latency mode.
-- Independent output resolution, frame rate, scan, scaling, crop, display, and
-  fullscreen controls.
-- System, light, and dark themes, responsive layouts, hideable diagnostics, and
-  bounded engineering logs.
-
-### Requirements
-
-- Windows 10/11 x64 for the validated D3D11 path.
-- NDI Runtime for receiving NDI sources.
-- Node.js and npm for source builds.
-- NDI 6 SDK and Visual Studio 2022 Build Tools with Desktop C++ for rebuilding
-  the Windows native module.
-
-macOS 11 or later is represented by compatibility interfaces and build scripts.
-Intel and Apple Silicon runtime validation remains pending.
-
-### Development
+- Node.js与npm；
+- NDI 6 SDK和兼容NDI Runtime；
+- Visual Studio 2022 Build Tools，并安装“使用C++的桌面开发”；
+- Windows x64环境。
 
 ```powershell
 npm install
@@ -297,7 +130,11 @@ npm run smoke
 npm start
 ```
 
-For macOS, install the NDI SDK for Apple and Xcode Command Line Tools, then run:
+`package.json` 是唯一版本来源。原生模块构建细节见
+[native/README.md](native/README.md)。
+
+macOS 11及以上源码构建需要NDI SDK for Apple、兼容NDI Runtime或NDI Tools、
+Xcode Command Line Tools和Node.js：
 
 ```bash
 npm install
@@ -307,31 +144,204 @@ npm run smoke
 npm run dist:mac
 ```
 
-### Architecture
+macOS首次搜索NDI源时需要允许“本地网络”权限。对外分发DMG前还需要配置
+Apple Developer ID、Hardened Runtime和notarization。
+
+### 架构概览
+
+```text
+NDI / URL / 本地媒体 / 测试图
+  -> 输入所有权与信号格式识别
+  -> Windows D3D11 GPU呈现
+  -> 同一源帧生成RGB输出与Alpha输出
+  -> GPU不可用时切换共享内存/WebGL兼容后端
+```
+
+独立输出不依赖控制预览的动画帧率。控制窗口最小化或被遮挡时，原生输出应继续运行。
+
+### 文档
+
+- [CHANGELOG.md](CHANGELOG.md)：版本更新记录。
+- [PERFORMANCE.md](PERFORMANCE.md)：性能基线和五小时稳定性结果。
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)：第三方许可与NDI声明。
+- [native/README.md](native/README.md)：原生模块构建和接口说明。
+- [overlay-link-lab](overlay-link-lab/README.md)：与主程序隔离的单线KEY/FILL硬件理论研究。
+
+### 许可证
+
+项目源码采用 [MIT License](LICENSE)。NDI SDK、NDI Runtime及相关商标受Vizrt单独条款约束，
+不包含在本项目MIT许可范围内。项目与Vizrt不存在隶属或官方合作关系。
+
+## English
+
+### Overview
+
+RGB Alpha Splitter is a desktop tool for live video production. It accepts Full NDI,
+URL, local video/image, or test-pattern input, splits the picture into RGB (Fill) and
+Alpha (Key), and presents them in independent windows or fullscreen on extended displays.
+
+The application produces ordinary GPU desktop windows. It is useful for software
+monitoring and production workflows without dedicated Fill/Key hardware, but it does
+not replace a genlocked SDI output card or hardware Fill/Key synchronization.
+
+### Download and first run
+
+Windows 10/11 x64 is the primary validated platform. Download the latest installer from
+[GitHub Releases](https://github.com/BroWei6657/rgb-alpha-splitter/releases).
+
+1. Download `RGB-Alpha-Splitter-Setup-1.2.1.exe`.
+2. Verify it with the `SHA256SUMS.txt` file on the Release page.
+3. Run the installer and choose an installation directory.
+4. To use NDI mode, install a compatible **NDI Runtime**, then restart the application.
+5. Allow private-network access in Windows Firewall when discovering NDI sources for the first time.
+
+The current Windows installer is unsigned, so Windows may display a SmartScreen warning.
+Only download it from this project's GitHub Release and verify its SHA-256 before running it.
+
+> **NDI Runtime is not the NDI SDK:** regular users only need the Runtime. The SDK,
+> Visual Studio, and Node.js are required only when rebuilding the native module.
+
+Without the NDI Runtime, the application can still start and URL, local-media, and
+test-pattern modes remain available. NDI discovery, connection, and reception are
+unavailable. If you only need to receive NDI, install the Runtime for your platform:
+
+- [Download NDI Runtime v6 for Windows](https://ndi.link/NDIRedistV6)
+- [Download NDI Runtime v6 for macOS](https://ndi.link/NDIRedistV6Apple)
+- [Official NDI Tools download page](https://ndi.video/tools/) (optional additional tools)
+- [DistroAV NDI Runtime installation guide](https://github.com/DistroAV/DistroAV/wiki/1.-Installation#required-components---ndi-runtime) (third-party reference)
+
+Restart RGB Alpha Splitter after installation. This project does not bundle or redistribute
+the NDI Runtime, NDI Tools, or SDK.
+
+### Before using NDI
+
+- Keep the sender and this computer on a mutually reachable local network; a Private Windows network profile is recommended.
+- Allow the sender, NDI Runtime, and RGB Alpha Splitter through the local firewall.
+- vMix or another sender must actually transmit Full NDI with Alpha; ordinary NDI video usually has no Alpha channel.
+- After connecting, check the detected resolution, frame rate, pixel format, and Alpha state.
+- If automatic gamut or range detection is wrong, adjust it manually or restore automatic detection.
+- Stable sync improves output cadence; low-latency mode uses the latest frame. Neither mode is hardware genlock.
+
+### Features
+
+- **Inputs:** Full NDI, HTTP/HTTPS URL, local video/image, and generated test patterns.
+- **Channel split:** RGB output and grayscale Alpha output with gain and inversion controls.
+- **GPU-first Windows output:** native D3D11 dual presentation with automatic compatibility fallback.
+- **Signal and color:** Rec.709/Rec.2020 SDR, Full/Limited range, common HD/UHD sizes,
+  fractional frame rates, and 1080i TFF/BFF input handling.
+- **Geometry:** fit, center-fill, stretch, and eight-handle manual crop.
+- **URL tools:** natural/custom viewport, transparent background, freeze indication, and manual refresh.
+- **Independent outputs:** separate RGB/Alpha display selection and fullscreen windows; minimizing the control window should not pause output.
+- **Control preview:** lightweight, full, and paused modes, with output performance prioritized while output windows are open.
+- **Diagnostics:** actual output FPS, frame time, queue, GPU, clock, connection state, and engineering logs.
+- **Interface:** system, light, and dark themes, hideable diagnostics, and responsive narrow layouts.
+
+### Quick start
+
+1. Start the application and choose NDI or URL mode, or load a local file/test pattern.
+2. In NDI mode, refresh sources, select the sender, and connect. In URL mode, enter the address and select Load URL.
+3. Confirm the input preview and detected format, gamut, and range. Override them only when detection is wrong.
+4. Configure output resolution, frame rate, scan mode, and scaling.
+5. Select the RGB and Alpha displays, then open the windows or choose Fullscreen All Outputs.
+6. During production, use `RGB FPS` and `Alpha FPS` in Diagnostics. The top FPS value is the control-preview rate.
+
+### Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| No NDI sources | Install the NDI Runtime, confirm the sender is active and on the same network, and check firewall/network-profile settings. |
+| NDI Bridge unavailable | Install or repair [NDI Runtime v6 for Windows](https://ndi.link/NDIRedistV6), then restart the application. Regular users do not need the NDI SDK. |
+| Alpha is solid white or black | Confirm the sender or media really contains Alpha; do not use Alpha gain to compensate for a missing channel. |
+| Private-network URL blocked | Private ranges are blocked by default. Enable Allow LAN URL only for a trusted address. |
+| MOV/video does not play | Codec support depends on the OS and Chromium. Transcode to supported H.264 or another common format. |
+| Output FPS is low | Use lightweight or paused control preview, choose a sensible output/display rate, and inspect GPU, queue, and P95 metrics. |
+| Preview slows when minimized | The control preview may throttle intentionally; check the output windows and actual RGB/Alpha FPS metrics. |
+| URL picture stops changing | URL mode reports a freeze but does not auto-refresh. Verify the page, then use Refresh Page manually. |
+
+### Logs and diagnostics
+
+Packaged builds first write logs to `logs/` beside the executable. If that location is
+not writable, logs fall back to:
+
+```text
+%LOCALAPPDATA%\RGB Alpha Splitter\logs\
+```
+
+Diagnostics shows the active path and provides an Open Log Directory command. For support,
+include the incident time, input mode, output format, backend state, and relevant log lines.
+Logs can contain display names, NDI source names, or sanitized URL details, so review them
+before posting publicly.
+
+### Current limitations
+
+- Windows D3D11 is the primary validated path. macOS interfaces and build scripts remain,
+  but Intel and Apple Silicon runtime and long-duration validation are pending.
+- The application currently processes video only; it does not receive or output NDI/URL media audio.
+- Stable real-world 2160p60 dual output is not claimed; validate it on the target system.
+- Ordinary extended displays do not provide hardware genlock, scanline synchronization,
+  or physical SDI Fill/Key synchronization.
+- The five-hour stability report used a synthetic 1080p60 source for DXGI dual output and
+  did not use a real NDI sender, so it is not a five-hour NDI FrameSync reception acceptance test.
+- URL and local-media codec support is limited by Electron/Chromium and the operating system.
+
+### Running from source
+
+Regular installer users do not need these tools. A Windows source build requires:
+
+- Node.js and npm;
+- the NDI 6 SDK and a compatible NDI Runtime;
+- Visual Studio 2022 Build Tools with Desktop development with C++;
+- Windows x64.
+
+```powershell
+npm install
+npm run build:native
+npm run check:version
+npm run check
+npm run smoke
+npm start
+```
+
+`package.json` is the single version source. See [native/README.md](native/README.md)
+for native build details.
+
+A macOS 11+ source build requires the NDI SDK for Apple, a compatible Runtime or NDI Tools,
+Xcode Command Line Tools, and Node.js:
+
+```bash
+npm install
+npm run build:native:mac
+npm run check
+npm run smoke
+npm run dist:mac
+```
+
+Allow Local Network access when discovering NDI sources on macOS. Distribution also requires
+an Apple Developer ID, Hardened Runtime, and notarization.
+
+### Architecture overview
 
 ```text
 NDI / URL / local media / test pattern
-  -> native receiver or isolated Chromium source
-  -> D3D11 GPU presenter on Windows
-  -> shared RGB source texture
-  -> RGB output + Alpha output
-  -> shared-memory/WebGL compatibility fallback
+  -> input ownership and signal detection
+  -> Windows D3D11 GPU presentation
+  -> one source frame feeds RGB output and Alpha output
+  -> shared-memory/WebGL compatibility fallback when GPU output is unavailable
 ```
 
-The output windows do not depend on the control window's animation frame rate.
-Minimizing or occluding the control window must not pause native output.
+Independent output does not depend on the control preview's animation rate. Native output
+should continue while the control window is minimized or occluded.
 
-### Limitations
+### Documentation
 
-- Ordinary GPU display outputs do not provide hardware genlock, scanline
-  synchronization, or physical SDI Fill/Key synchronization.
-- Validated 2160p60 operation is not claimed.
-- macOS Metal output and long-duration Intel/Apple Silicon validation remain
-  future work.
-- Media codec support depends on Chromium and the operating system.
+- [CHANGELOG.md](CHANGELOG.md): release history.
+- [PERFORMANCE.md](PERFORMANCE.md): performance baselines and the five-hour stability result.
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): third-party licenses and NDI notices.
+- [native/README.md](native/README.md): native build and interface details.
+- [overlay-link-lab](overlay-link-lab/README.md): isolated single-cable KEY/FILL hardware research.
 
 ### License
 
-Project source is licensed under the [MIT License](LICENSE). NDI components and
-trademarks remain subject to Vizrt's separate terms. See
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Project source is licensed under the [MIT License](LICENSE). The NDI SDK, NDI Runtime,
+and related trademarks remain subject to Vizrt's separate terms and are not covered by
+this project's MIT license. This project is not affiliated with or endorsed by Vizrt.
