@@ -7,17 +7,33 @@ This file follows the versioned structure of [Keep a Changelog](https://keepacha
 
 ### 中文
 
-- 重写面向用户的README，精简过时架构和开发过程说明。
-- 补充Windows/macOS NDI Runtime v6直达下载链接、可选NDI Tools入口及第三方安装参考，并明确NDI Runtime与NDI SDK的区别。
-- 补充安装包签名状态、视频/音频范围、日志隐私、平台验证和硬件同步边界。
-- 统一README和更新日志的公开发布表述，同时保留真实版本历史。
+- 暂无。
 
 ### English
 
-- Reworked the user-facing README and removed outdated architecture and development-process details.
-- Added direct Windows/macOS NDI Runtime v6 downloads, the optional NDI Tools page, and a third-party installation reference, while clarifying the Runtime versus SDK distinction.
-- Documented installer-signing status, video/audio scope, log privacy, platform validation, and hardware-sync boundaries.
-- Standardized the public-release wording in the README and changelog while preserving the factual release history.
+- None.
+
+## [1.3.0] - 2026-07-18
+
+### 中文
+
+- 将控制界面重构为信号工作台布局，使用独立的输入、信号、输出和诊断页签。
+- 页签选中状态清晰可见，右侧工作区仅显示当前页签对应的控制组件。
+- 诊断页新增低开销60秒并行折线趋势，可同时选择RGB FPS、Alpha FPS、P95帧时间、时钟抖动、双路Present偏差和GPU队列；不同单位使用独立刻度。
+- 移除重复的“隐藏诊断”按钮，诊断页统一由左侧页签访问。
+- 缩小中央监看区，在常用桌面窗口中无需页面级滚动即可查看完整输入、RGB和Alpha预览；各页签内的板块从01独立编号。
+- 补充同步模式、信号格式、色彩、GPU、Alpha、裁切和输出设置的事件日志，并将透明棋盘调整为低对比中性灰效果。
+- 新增可持久保存的“跟随系统/简体中文/English”界面语言选择，并支持通过安装目录 `resources/locales/` 下的UTF-8 TXT映射文件扩展或修改语言内容。
+
+### English
+
+- Reworked the control interface into a signal-desk layout with dedicated Input, Signal, Output, and Diagnostics tabs.
+- Added persistent, visible tab selection and made the inspector show only the controls for the active tab.
+- Added low-overhead parallel 60-second diagnostics charts with multi-select RGB FPS, Alpha FPS, P95 frame time, clock jitter, paired Present skew, and GPU queue metrics, each using its own scale.
+- Removed the redundant diagnostics visibility button; the Diagnostics tab is now the single entry point.
+- Reduced the central monitoring area so the full input, RGB, and Alpha preview stack fits common desktop windows without page-level scrolling, and restarted section numbering from 01 within each tab.
+- Added event logging for synchronization, signal format, color, GPU, Alpha, crop, and output settings, and restyled the transparent checkerboard with a low-contrast neutral gray treatment.
+- Added persistent Follow System, Simplified Chinese, and English UI selection, with extensible UTF-8 TXT locale mappings under the installed `resources/locales/` directory.
 
 ## [1.2.1] - 2026-07-15
 
@@ -26,16 +42,12 @@ This file follows the versioned structure of [Keep a Changelog](https://keepacha
 - 重新梳理控制台信息层级，使用稳定的顶部命令栏、运行状态轨和RGB/Alpha通道标识。
 - 调整响应式断点，在1166px宽度下继续保留控制栏与监看区双栏布局，窄屏控制区改为紧凑网格。
 - 增强主次操作、键盘焦点、文件选择、禁用状态及减少动态偏好的视觉反馈。
-- 保持全部1.2.0输入、输出、GPU、色彩、裁切、同步和安全接口不变。
-- 新增与主应用运行链路隔离的Overlay Link硬件理论、协议、模拟器和验证资料。
 
 ### English
 
 - Reworked the control-console hierarchy with a stable command bar, runtime status rail, and distinct RGB/Alpha channel cues.
 - Adjusted responsive breakpoints so the control and monitoring columns remain visible at 1166 px, with a compact control grid on narrower windows.
 - Improved visual feedback for primary and secondary actions, keyboard focus, file selection, disabled states, and reduced-motion preferences.
-- Preserved every v1.2.0 input, output, GPU, color, crop, synchronization, and security interface.
-- Added isolated Overlay Link hardware theory, protocol, simulator, and validation material without changing the application runtime.
 
 ## [1.2.0] - 2026-07-14
 
@@ -46,7 +58,6 @@ This file follows the versioned structure of [Keep a Changelog](https://keepacha
 - 新增系统、浅色、深色主题，可隐藏诊断区并优化窄屏布局。
 - 新增八方向裁切缩放和实时源像素尺寸。
 - 新增NDI FrameSync稳定模式、低延迟旁路和DXGI时序指标。
-- 性能目标改为格式和帧时序指标，不再绑定指定硬件。
 
 ### English
 
@@ -55,7 +66,6 @@ This file follows the versioned structure of [Keep a Changelog](https://keepacha
 - Added themes, hideable diagnostics, and responsive narrow layouts.
 - Added eight-handle crop resizing with live source-pixel dimensions.
 - Added FrameSync stable mode, low-latency bypass, and DXGI timing telemetry.
-- Replaced hardware-specific targets with format and frame-timing metrics.
 
 ## [1.1.2] - 2026-07-14
 
@@ -66,7 +76,6 @@ This file follows the versioned structure of [Keep a Changelog](https://keepacha
 - 新增双输出轻量控制预览策略。
 - 将Alpha和扫描设置同步到原生GPU呈现器。
 - 隐藏Electron默认菜单并禁用生产包DevTools入口。
-- 保持macOS公共接口同步，等待实机验证。
 
 ### English
 
@@ -75,7 +84,6 @@ This file follows the versioned structure of [Keep a Changelog](https://keepacha
 - Added lightweight control previews for dual-output operation.
 - Synchronized Alpha and scan settings with the native presenter.
 - Removed default menus and packaged DevTools entry points.
-- Kept macOS interfaces aligned pending hardware validation.
 
 ## [1.1.1] - 2026-07-12
 

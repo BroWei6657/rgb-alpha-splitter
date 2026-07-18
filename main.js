@@ -6,6 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const logger = require("./logger");
+const { loadLocaleBundle } = require("./src/locale-loader");
 const isPerformanceTest = process.argv.includes("--performance-test");
 const isSoakTest = process.argv.includes("--soak-test");
 const isSmokeTest = process.argv.includes("--smoke-test") || isPerformanceTest || isSoakTest;
@@ -91,6 +92,14 @@ let engineStatus = {
   reason: "Native shared-texture presentation is not initialized; compatibility backend is active."
 };
 let urlSourceStatus = { active: false, state: "stopped", url: null, width: 0, height: 0, fps: 0, actualFps: 0, frozenMs: 0, hasAlpha: false };
+
+function getLocaleBundle() {
+  const localesDirectory = app.isPackaged ? path.join(process.resourcesPath, "locales") : path.join(__dirname, "locales");
+  return {
+    ...loadLocaleBundle(localesDirectory),
+    systemLocale: app.getLocale()
+  };
+}
 
 const SIGNAL_PRESETS = Object.freeze({
   "720p50": { width: 1280, height: 720, frameRateN: 50, frameRateD: 1, scanMode: "progressive", fieldOrder: "none" },
@@ -344,11 +353,11 @@ async function startUrlSource(options = {}) {
   try {
     parsed = new URL(rawUrl);
   } catch (_) {
-    throw new Error("请输入有效的 URL 地址。");
+    throw new Error("ERR_URL_INVALID");
   }
   const allowed = parsed.protocol === "http:" || parsed.protocol === "https:" ||
     (isSmokeTest && parsed.protocol === "data:");
-  if (!allowed) throw new Error("URL 模式仅支持 HTTP 和 HTTPS 地址。");
+  if (!allowed) throw new Error("ERR_URL_PROTOCOL");
   const width = Math.min(4096, Math.max(64, Number(options.width) || 1920));
   const height = Math.min(2160, Math.max(64, Number(options.height) || 1080));
   const fps = Math.min(60, Math.max(1, Number(options.fps) || 30));
@@ -738,6 +747,7 @@ function createWindow() {
         const controlPlaneResult = JSON.parse(await mainWindow.webContents.executeJavaScript(`
           (async () => {
             const appInfo = await window.ndiBridge.getAppInfo();
+            const locales = await window.ndiBridge.getLocales();
             const engine = await window.ndiBridge.getEngineStatus();
             const signal = await window.ndiBridge.getSignalConfig();
             const first = await window.ndiBridge.activateLocalSource();
@@ -760,23 +770,52 @@ function createWindow() {
             const lowLatency = await window.ndiBridge.setSignalConfig({ ...signal.config, syncMode: "low-latency" });
             const stableSync = await window.ndiBridge.setSignalConfig({ ...signal.config, syncMode: "stable" });
             const logStatus = await window.ndiBridge.getLogStatus();
+            const checker = document.getElementById("showCheckerboard");
+            checker.checked = false;
+            checker.dispatchEvent(new Event("change", { bubbles: true }));
+            const checkerOffBackground = getComputedStyle(document.getElementById("sourceCanvas")).backgroundColor;
+            checker.checked = true;
+            checker.dispatchEvent(new Event("change", { bubbles: true }));
+            const checkerOnBackground = getComputedStyle(document.getElementById("sourceCanvas")).backgroundColor;
+            const syncControl = document.getElementById("syncMode");
+            syncControl.value = "low-latency";
+            syncControl.dispatchEvent(new Event("change", { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            syncControl.value = "stable";
+            syncControl.dispatchEvent(new Event("change", { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            const eventLogText = document.getElementById("eventLog").textContent;
+            const panelIndexes = Object.fromEntries(Array.from(document.querySelectorAll("[data-inspector-panel]")).map((panel) => [
+              panel.dataset.inspectorPanel, Array.from(panel.querySelectorAll(".section-index")).map((element) => element.textContent.trim())
+            ]));
             return JSON.stringify({ appInfo, engine, presetCount: Object.keys(signal.presets).length, invalidPresets,
               staleAccepted, currentAccepted, broadcast, crop, gpuRuntimeAccepted, lowLatency, stableSync, logStatus,
+              checkerPreview: { checkerOffBackground, checkerOnBackground }, panelIndexes,
+              localeSupport: locales.languages.map((language) => language.id).join(",") === "zh-CN,en-US" &&
+                Object.keys(locales.catalogs["zh-CN"]).length === Object.keys(locales.catalogs["en-US"]).length &&
+                document.getElementById("languageMode").options.length === 3,
+              detailedEventLog: (eventLogText.includes("NDI 同步模式已切换：低延迟") && eventLogText.includes("NDI 同步模式已切换：稳定同步")) ||
+                (eventLogText.includes("NDI Sync Mode changed: Low latency") && eventLogText.includes("NDI Sync Mode changed: Stable sync")),
               cropHandleCount: document.querySelectorAll(".crop-handle").length,
               narrowLayout: {
                 workspaceColumns: getComputedStyle(document.querySelector(".workspace")).gridTemplateColumns.trim().split(/\\s+/).length,
                 horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth
               },
-              uiUpgrade: ["outputResolution","outputFrameRate","scanMode","scalingMode","refreshUrlBtn","cropOverlay","restoreAutoColorBtn","gpuPreference","previewPolicy","metricGpuAdapter","themeMode","toggleDiagnosticsBtn","diagnosticsSection","openLogsBtn","syncMode","metricClockSource"].every(id => Boolean(document.getElementById(id)))
+              uiUpgrade: ["outputResolution","outputFrameRate","scanMode","scalingMode","refreshUrlBtn","cropOverlay","restoreAutoColorBtn","gpuPreference","previewPolicy","metricGpuAdapter","themeMode","languageMode","inspectorTabInput","inspectorTabSignal","inspectorTabOutput","inspectorTabDiagnostics","inspectorInputPanel","inspectorSignalPanel","inspectorOutputPanel","inspectorDiagnosticsPanel","diagnosticsSection","diagnosticChartMetric","diagnosticChart","openLogsBtn","syncMode","metricClockSource"].every(id => Boolean(document.getElementById(id))) &&
+                document.querySelectorAll("[data-diagnostic-metric]").length === 6 &&
+                document.querySelectorAll("[data-diagnostic-track]").length === 6
             }, (_key, value) => typeof value === "bigint" ? value.toString() : value);
           })()
         `));
         if (controlPlaneResult.appInfo.version !== app.getVersion() || controlPlaneResult.staleAccepted ||
-            !controlPlaneResult.currentAccepted || controlPlaneResult.presetCount < 10 ||
+            !controlPlaneResult.currentAccepted || controlPlaneResult.presetCount < 10 || !controlPlaneResult.localeSupport ||
             controlPlaneResult.broadcast.scanMode !== "interlaced" || controlPlaneResult.invalidPresets.length ||
             controlPlaneResult.crop.scalingMode !== "crop" || !controlPlaneResult.gpuRuntimeAccepted || !controlPlaneResult.uiUpgrade ||
             controlPlaneResult.cropHandleCount !== 8 || controlPlaneResult.lowLatency.syncMode !== "low-latency" ||
             controlPlaneResult.stableSync.syncMode !== "stable" || !controlPlaneResult.logStatus.available ||
+            controlPlaneResult.checkerPreview.checkerOffBackground === controlPlaneResult.checkerPreview.checkerOnBackground ||
+            controlPlaneResult.checkerPreview.checkerOnBackground !== "rgba(0, 0, 0, 0)" || !controlPlaneResult.detailedEventLog ||
+            JSON.stringify(controlPlaneResult.panelIndexes) !== JSON.stringify({ input: ["01", "01", "02"], signal: ["01", "02"], output: ["01"], diagnostics: ["01"] }) ||
             controlPlaneResult.narrowLayout.workspaceColumns !== 2 || controlPlaneResult.narrowLayout.horizontalOverflow) {
           throw new Error(`Control-plane validation failed: ${JSON.stringify(controlPlaneResult)}`);
         }
@@ -1221,6 +1260,15 @@ ipcMain.handle("source:activateLocal", (event) => {
   return activateSource("local");
 });
 ipcMain.handle("app:getInfo", () => ({ version: app.getVersion(), platform: process.platform }));
+ipcMain.handle("i18n:getCatalogs", (event) => {
+  if (!isTrustedSender(event)) throw new Error("Unauthorized IPC sender.");
+  try {
+    return getLocaleBundle();
+  } catch (error) {
+    logger.write("error", "i18n", "catalog_load_failed", { message: error.message });
+    throw error;
+  }
+});
 ipcMain.handle("log:getStatus", (event) => {
   if (!isTrustedSender(event)) throw new Error("Unauthorized IPC sender.");
   return logger.getStatus();
@@ -1334,7 +1382,8 @@ ipcMain.handle("ndi:getReceiverStatus", () => {
 
 ipcMain.handle("display:list", () => screen.getAllDisplays().map((display, index) => ({
   id: String(display.id),
-  name: display.label || `显示器 ${index + 1}`,
+  name: display.label || "",
+  ordinal: index + 1,
   primary: display.id === screen.getPrimaryDisplay().id,
   bounds: display.bounds
 })));

@@ -1,85 +1,166 @@
-# 实施过程
+# 实施过程 / Implementation Process
 
-## 阶段 0：无硬件协议冻结（当前）
+[中文](#中文说明) | [English](#english)
 
-1. 运行 `node overlay-link-lab\\tests\\transport-core.test.js`，保证打包、拆包、重复行和错误检测通过。
-2. 运行 `node overlay-link-lab\\scripts\\verify-theory.js`，保证 7 条几何/时序/带宽断言通过。
-3. 打开 `simulator/index.html`，检查三种测试图、KEY 增益、反转和错误注入。
-4. 冻结 `OLK-HDMI-1.0`。协议变更必须增加协议版本，不能静默改变像素映射。
+## 中文说明
 
-本阶段完成后才能采购 ZCU106。
+本流程描述实验研究顺序，不代表已完成的硬件功能。每一阶段必须通过对应验证后才能进入下一阶段。
 
-## 阶段 1：独立 PC companion
+### 阶段0：无硬件协议验证
 
-新增程序仍放在本目录，不修改旧应用。
+1. 运行`node overlay-link-lab\tests\transport-core.test.js`，验证打包、拆包、重复行和错误检测。
+2. 运行`node overlay-link-lab\scripts\verify-theory.js`，验证几何、时序和带宽断言。
+3. 打开`simulator/index.html`检查测试图、KEY增益、反转和错误注入。
+4. 协议映射发生不兼容变更时必须增加协议版本。
+
+### 阶段1：独立PC companion
+
+companion应与主程序解耦，只读消费兼容帧并生成固定HDMI传输画面：
 
 ```text
-旧 RGB Alpha Splitter
-  -> 只读打开 Local\\NDIAlphaSplitter.Frame.v1
+RGB Alpha Splitter
+  -> read-only shared frame
   -> Overlay Link companion
-  -> D3D11 3840x2160 全屏交换链
-  -> 指定的 ZCU106 HDMI 显示器
+  -> D3D11 3840 x 2160 fullscreen swap chain
+  -> selected HDMI transport display
 ```
 
-软件过程：
+实现要求：
 
-1. 复用旧共享帧头和 sequence-before/after 校验，只读映射，不创建新 owner。
-2. D3D11 pixel shader 读取 RGBA 源纹理：左半输出 RGB，右半把 Alpha 复制到 RGB；源 Y 坐标用 `floor(transportY / 2)`。
-3. 交换链固定 `DXGI_FORMAT_R8G8B8A8_UNORM`、3840x2160、60/1；关闭 HDR、桌面缩放和色彩增强。
-4. 只允许用户明确选择一个物理显示器；检测不到精确 3840x2160@60 RGB 时拒绝上线。
-5. 记录 Present 时间、dropped frame、共享帧 sequence、显示模式和 GPU adapter LUID。
+1. 复用共享帧序列校验，只读映射，不创建新的共享内存owner。
+2. D3D11 pixel shader将FILL写入左半幅，将Alpha灰度写入右半幅，并把每条源行重复两次。
+3. 输出固定为`DXGI_FORMAT_R8G8B8A8_UNORM`、3840 x 2160、60/1，关闭HDR、缩放和色彩增强。
+4. 只有检测到精确目标模式时才允许输出，并记录Present时间、丢帧、序列号、显示模式和适配器LUID。
 
-HDMI 路线不需要设备驱动。companion 是一个普通显示输出程序；硬件通过 EDID 暴露固定模式。
+HDMI路线把设备呈现为普通显示器，不需要专用设备驱动。
 
-## 阶段 2：ZCU106 单输入单输出
+### 阶段2：ZCU106单输入单输出
 
-先验证输入协议和一路输出，再增加第二路。
+先验证输入协议和一路FILL输出，KEY通过ILA抽样：
 
-1. Vivado 工程使用 ZCU106 board preset、HDMI 2.0 RX Subsystem、Video Timing Controller 和 ILA。
-2. RX 固定为 RGB 4PPC @ 148.5 MHz；不加入 VDMA、缩放器或 VCU。
-3. 实现偶数行捕获、奇数行一致性检查和左右半幅拆分。
-4. 第一阶段只把 FILL 接到板载 HDMI TX；KEY 在 ILA 中抽样校验。
-5. 用静态 ramp 和 moving edge 验证没有重排、范围映射或行错位。
+1. 使用ZCU106 board preset、HDMI 2.0 RX Subsystem、Video Timing Controller和ILA。
+2. RX固定为RGB 4PPC @ 148.5MHz，不加入VDMA、缩放器或VCU。
+3. 实现重复行检查、左右半幅拆分和ping-pong行缓存。
+4. 使用静态ramp和moving edge检查通道顺序、范围和行对齐。
 
-FPGA 模块边界建议：
+建议模块边界：
 
 ```text
-olk_rx_guard        输入时序、RGB、重复行和 KEY 三通道检查
+olk_rx_guard        输入时序、RGB、重复行和KEY三通道检查
 olk_line_split      左右半幅拆分、ping-pong BRAM
-olk_1080_timing     唯一的 2200 x 1125 输出计数器
-olk_fill_out        24-bit RGB 读口
-olk_key_out         8-bit 到 RGB、Full/Limited 映射
+olk_1080_timing     单一2200 x 1125输出计数器
+olk_fill_out        24-bit RGB读口
+olk_key_out         8-bit到RGB及Full/Limited映射
 olk_status_regs     锁定状态和错误计数器
 ```
 
-## 阶段 3：双 HDMI FMC
+### 阶段3：双HDMI输出
 
-1. FMC 小板使用 ADV7511KSTZ；先单独用彩条发生器配置 I2C 和输出 1080p60。
-2. 板载 TX 与 FMC TX 接收同一个 pixel clock、HS、VS、DE。
-3. FILL 输出 24-bit RGB；KEY 输出复制后的 24-bit 灰度。
-4. 上电顺序为：电源稳定、配置 EDID、RX lock、清缓存、同时释放两个 TX reset。
-5. 任一 RX/缓存错误持续超过两帧时，两路输出同时切到黑；恢复需连续 30 帧无错。
+1. 第二路ADV7511先使用独立彩条发生器验证I2C配置和1080p60输出。
+2. 板载TX与FMC TX共用pixel clock、HS、VS和DE。
+3. FILL输出24-bit RGB；KEY输出三通道相同的灰度。
+4. 上电后依次完成电源、EDID、RX lock、缓存清零，再同时释放两个TX reset。
+5. 输入或缓存错误持续超过两帧时，两路同时输出黑；连续30帧无错后同时恢复。
 
-用示波器检查两路 VS/HS 偏斜，再用实际切换台的 External Key 模式检查边缘。如果切换台要求 FILL/KEY 端口顺序或有限范围，在 FPGA 寄存器配置，不改传输协议。
+使用示波器测量两路VS/HS偏斜，并用实际切换台检查External Key边缘和码值范围。
 
-## 阶段 4：定制 PCB
+### 阶段4：定制PCB
 
-1. 先冻结 ZCU106 引脚、GT quad、时钟和 ADV7511 寄存器配置。
-2. HDMI 2.0 输入差分对按 100 ohm 约束，最小化过孔和 stub；TMDS181 紧邻输入连接器。
-3. 三个 HDMI 口分别放置 TPD12S016，DDC 走线与 TMDS 隔离。
-4. 两颗 ADV7511 的输入时钟来自同一低偏斜扇出；不用两个独立晶振。
-5. PCB 评审必须包含 stack-up、阻抗报告、PDN、热仿真、BGA escape、HDMI compliance 预扫。
+只有开发板方案通过后才开始定制板：
 
-首板 bring-up 顺序：电源 -> JTAG -> DDR -> I2C/MCU -> EDID/HPD -> RX lock -> 单 TX -> 双 TX -> 24 小时稳定性测试。
+1. 冻结FPGA引脚、GT quad、时钟和发送器寄存器配置。
+2. HDMI差分对按100ohm约束，控制过孔与stub，并把重定时器靠近输入接口。
+3. 分别处理HDMI接口ESD、DDC和HPD，保持低速控制与TMDS隔离。
+4. 两个发送器使用同一低偏斜时钟源，不使用独立晶振。
+5. 评审stack-up、阻抗、PDN、热、BGA escape和HDMI合规预扫。
 
-## 阶段 5：可选 Thunderbolt
+bring-up顺序：电源、JTAG、DDR、I2C/MCU、EDID/HPD、RX lock、单TX、双TX、24小时稳定性。
 
-只有 HDMI 版本通过全部验收后才开始：
+### 阶段5：可选Thunderbolt/PCIe
 
-1. JHL9440 暴露 PCIe Gen4 x4 到 FPGA endpoint。
-2. Windows 端先用 AMD XDMA 驱动验证 BAR、MSI-X 和持续 DMA，再决定是否写 KMDF 正式驱动。
-3. DMA payload 使用独立版本头、frame sequence、stride 和 CRC；至少三缓冲，过期帧直接丢弃。
-4. FPGA 收到完整帧后才切换读缓冲；两路 HDMI 仍由同一 1080p timing generator 输出。
-5. 完成 USB-IF/Thunderbolt 设计审查、Type-C PD、EMI 和互操作测试。
+该阶段仅在HDMI原型完成后评估：设备端通过PCIe DMA传输带版本、序列、stride和CRC的帧，
+至少使用三缓冲并丢弃过期帧。双HDMI仍由单一FPGA时序发生器输出。Thunderbolt路线需要单独
+完成驱动、USB-C PD、固件、EMI和互操作认证。
 
-Thunderbolt 不是 HDMI 方案的线缆替换，而是一条新的 PCIe 设备产品线。
+## English
+
+This process describes an experimental research sequence, not completed hardware
+functionality. Each stage must pass its verification criteria before the next begins.
+
+### Stage 0: protocol validation without hardware
+
+1. Run `node overlay-link-lab\tests\transport-core.test.js` to verify packing, unpacking, repeated lines, and error detection.
+2. Run `node overlay-link-lab\scripts\verify-theory.js` to verify geometry, timing, and bandwidth assertions.
+3. Open `simulator/index.html` to inspect test patterns, KEY gain, inversion, and error injection.
+4. Increment the protocol version for any incompatible mapping change.
+
+### Stage 1: independent PC companion
+
+The companion remains separate from the main application. It reads compatibility frames
+and produces the fixed HDMI transport image:
+
+```text
+RGB Alpha Splitter
+  -> read-only shared frame
+  -> Overlay Link companion
+  -> D3D11 3840 x 2160 fullscreen swap chain
+  -> selected HDMI transport display
+```
+
+Requirements:
+
+1. Reuse shared-frame sequence validation with a read-only mapping and do not create a new shared-memory owner.
+2. Use a D3D11 pixel shader to place FILL on the left and Alpha grayscale on the right while repeating each source line twice.
+3. Fix output at `DXGI_FORMAT_R8G8B8A8_UNORM`, 3840 x 2160, 60/1 with HDR, scaling, and color enhancement disabled.
+4. Enable output only when the exact mode is detected and record Present timing, drops, sequence, display mode, and adapter LUID.
+
+The HDMI route presents as an ordinary display and does not require a device-specific driver.
+
+### Stage 2: ZCU106 single input and output
+
+Validate the transport input and one FILL output first while sampling KEY through ILA:
+
+1. Use the ZCU106 board preset, HDMI 2.0 RX Subsystem, Video Timing Controller, and ILA.
+2. Fix RX at RGB 4PPC @ 148.5MHz without VDMA, scaling, or VCU blocks.
+3. Implement repeated-line checks, left/right splitting, and ping-pong line buffers.
+4. Use static ramps and moving edges to check channel order, range, and line alignment.
+
+Suggested modules:
+
+```text
+olk_rx_guard        Input timing, RGB, repeated-line, and KEY-channel checks
+olk_line_split      Left/right split and ping-pong BRAM
+olk_1080_timing     Single 2200 x 1125 output counter
+olk_fill_out        24-bit RGB read port
+olk_key_out         8-bit to RGB and Full/Limited mapping
+olk_status_regs     Lock state and error counters
+```
+
+### Stage 3: dual HDMI output
+
+1. Validate the second ADV7511 I2C setup and 1080p60 output with an independent color-bar generator.
+2. Drive the onboard TX and FMC TX from the same pixel clock, HS, VS, and DE.
+3. Output 24-bit RGB for FILL and replicated grayscale for KEY.
+4. Complete power, EDID, RX lock, and buffer clear before releasing both TX resets together.
+5. If input or buffer errors persist for more than two frames, black both outputs; restore them after 30 clean frames.
+
+Measure VS/HS skew with an oscilloscope and verify External Key edges and code ranges on the target switcher.
+
+### Stage 4: custom PCB
+
+Start a custom board only after the development-board design passes:
+
+1. Freeze FPGA pins, GT quad, clocks, and transmitter register settings.
+2. Route HDMI differential pairs at 100ohm, control vias and stubs, and place the retimer near the input.
+3. Handle ESD, DDC, and HPD at each connector while isolating low-speed control from TMDS.
+4. Feed both transmitters from one low-skew clock source rather than independent oscillators.
+5. Review stack-up, impedance, PDN, thermal design, BGA escape, and HDMI pre-compliance.
+
+Bring-up order: power, JTAG, DDR, I2C/MCU, EDID/HPD, RX lock, one TX, two TX, then a 24-hour stability run.
+
+### Stage 5: optional Thunderbolt/PCIe
+
+Evaluate this stage only after the HDMI prototype is complete. PCIe DMA frames need a
+version, sequence, stride, CRC, and at least three buffers with stale-frame rejection. A
+single FPGA timing generator still drives both HDMI outputs. The Thunderbolt path requires
+separate driver, USB-C PD, firmware, EMI, and interoperability work.

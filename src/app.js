@@ -2,6 +2,7 @@
   const DEFAULT_WIDTH = 960;
   const DEFAULT_HEIGHT = 540;
   const MAX_LOG_ITEMS = 80;
+  const t = (key, values) => window.i18n ? window.i18n.t(key, values) : key;
 
   const elements = {
     sourceCanvas: document.getElementById("sourceCanvas"),
@@ -74,10 +75,15 @@
     ,metricClockJitter: document.getElementById("metricClockJitter")
     ,metricPresentSkew: document.getElementById("metricPresentSkew")
     ,themeMode: document.getElementById("themeMode")
-    ,toggleDiagnosticsBtn: document.getElementById("toggleDiagnosticsBtn")
+    ,languageMode: document.getElementById("languageMode")
     ,diagnosticsSection: document.getElementById("diagnosticsSection")
     ,openLogsBtn: document.getElementById("openLogsBtn")
     ,logPathState: document.getElementById("logPathState")
+    ,diagnosticChartMetric: document.getElementById("diagnosticChartMetric")
+    ,diagnosticChart: document.getElementById("diagnosticChart")
+    ,diagnosticMetricInputs: Array.from(document.querySelectorAll("[data-diagnostic-metric]"))
+    ,inspectorTabs: Array.from(document.querySelectorAll("[data-inspector-tab]"))
+    ,inspectorPanels: Array.from(document.querySelectorAll("[data-inspector-panel]"))
     ,outputResolution: document.getElementById("outputResolution")
     ,outputFrameRate: document.getElementById("outputFrameRate")
     ,customOutputResolution: document.getElementById("customOutputResolution")
@@ -117,14 +123,14 @@
       depth: false,
       preserveDrawingBuffer: false
     });
-    if (!gl) throw new Error("当前显卡或驱动不支持 WebGL，无法启动 GPU 拆分。");
+    if (!gl) throw new Error(t("error.webglUnsupported"));
 
     const compile = (type, source) => {
       const shader = gl.createShader(type);
       gl.shaderSource(shader, source);
       gl.compileShader(shader);
       if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        throw new Error(gl.getShaderInfoLog(shader) || "WebGL shader 编译失败");
+        throw new Error(gl.getShaderInfoLog(shader) || t("error.shaderCompile"));
       }
       return shader;
     };
@@ -188,7 +194,7 @@
     `));
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramInfoLog(program) || "WebGL program 链接失败");
+      throw new Error(gl.getProgramInfoLog(program) || t("error.programLink"));
     }
 
     const buffer = gl.createBuffer();
@@ -313,6 +319,17 @@
     ,localPublishedFrames: 0
   };
 
+  const DIAGNOSTIC_HISTORY_LENGTH = 60;
+  const DIAGNOSTIC_METRICS = {
+    rgbFps: { label: "RGB FPS", unit: "fps", precision: 1 },
+    alphaFps: { label: "Alpha FPS", unit: "fps", precision: 1 },
+    p95FrameMs: { labelKey: "metric.p95Label", unit: "ms", precision: 2 },
+    tickJitterUs: { labelKey: "metric.clockJitterLabel", unit: "us", precision: 0 },
+    presentSkewUs: { labelKey: "metric.presentSkewLabel", unit: "us", precision: 0 },
+    gpuQueue: { labelKey: "metric.gpuQueueLabel", unit: "", precision: 0 }
+  };
+  const diagnosticHistory = Object.fromEntries(Object.keys(DIAGNOSTIC_METRICS).map((key) => [key, []]));
+
   function updatePreviewDimensions() {
     const outputsActive = state.rgbOutput || state.alphaOutput;
     const lightweight = outputsActive && state.signalConfig.previewPolicy === "lightweight";
@@ -350,6 +367,13 @@
     window.ndiClient.writeLog({ level, category: "ui", event: "status", fields: { message } }).catch(() => {});
   }
 
+  function localizedError(error) {
+    const code = error && error.message;
+    if (code === "ERR_URL_INVALID") return t("error.invalidUrl");
+    if (code === "ERR_URL_PROTOCOL") return t("error.urlProtocol");
+    return code || String(error || "");
+  }
+
   function applyTheme(mode) {
     const selected = ["system", "light", "dark"].includes(mode) ? mode : "system";
     document.documentElement.dataset.theme = selected;
@@ -357,11 +381,125 @@
     localStorage.setItem("themeMode", selected);
   }
 
-  function setDiagnosticsVisible(visible) {
-    elements.diagnosticsSection.hidden = !visible;
-    elements.toggleDiagnosticsBtn.textContent = visible ? "隐藏诊断" : "显示诊断";
-    elements.toggleDiagnosticsBtn.setAttribute("aria-pressed", String(visible));
-    localStorage.setItem("diagnosticsVisible", String(visible));
+  let activeInspectorPanel = "input";
+
+  function formatDiagnosticValue(value, metric, includeUnit = true) {
+    const formatted = Number(value || 0).toFixed(metric.precision);
+    return includeUnit && metric.unit ? `${formatted} ${metric.unit}` : formatted;
+  }
+
+  function selectedDiagnosticMetrics() {
+    return elements.diagnosticMetricInputs.filter((input) => input.checked).map((input) => input.value);
+  }
+
+  function initializeDiagnosticCharts() {
+    elements.diagnosticChart.replaceChildren();
+    const namespace = "http://www.w3.org/2000/svg";
+    for (const [key, metric] of Object.entries(DIAGNOSTIC_METRICS)) {
+      const metricLabel = metric.label || t(metric.labelKey);
+      const track = document.createElement("section");
+      track.className = "diagnostic-chart-track";
+      track.dataset.diagnosticTrack = key;
+      track.hidden = true;
+
+      const header = document.createElement("div");
+      header.className = "diagnostic-chart-track-head";
+      const title = document.createElement("strong");
+      title.textContent = metricLabel;
+      const summary = document.createElement("span");
+      for (const [labelKey, dataKey] of [["chart.current", "chartCurrent"], ["chart.minimum", "chartMin"], ["chart.maximum", "chartMax"]]) {
+        if (summary.childNodes.length) summary.append(" · ");
+        summary.append(`${t(labelKey)} `);
+        const value = document.createElement("b");
+        value.dataset[dataKey] = "";
+        value.textContent = "0";
+        summary.append(value);
+      }
+      header.append(title, summary);
+
+      const svg = document.createElementNS(namespace, "svg");
+      svg.setAttribute("viewBox", "0 0 300 64");
+      svg.setAttribute("preserveAspectRatio", "none");
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", t("chart.aria", { metric: metricLabel }));
+      for (const y of [16, 32, 48]) {
+        const line = document.createElementNS(namespace, "line");
+        line.setAttribute("x1", "0");
+        line.setAttribute("y1", String(y));
+        line.setAttribute("x2", "300");
+        line.setAttribute("y2", String(y));
+        line.classList.add("diagnostic-chart-grid-line");
+        svg.append(line);
+      }
+      const polyline = document.createElementNS(namespace, "polyline");
+      polyline.dataset.chartLine = "";
+      polyline.setAttribute("points", "");
+      polyline.setAttribute("vector-effect", "non-scaling-stroke");
+      svg.append(polyline);
+      track.append(header, svg);
+      elements.diagnosticChart.append(track);
+    }
+  }
+
+  function renderDiagnosticCharts() {
+    if (activeInspectorPanel !== "diagnostics") return;
+    const selected = new Set(selectedDiagnosticMetrics());
+    for (const [key, metric] of Object.entries(DIAGNOSTIC_METRICS)) {
+      const track = elements.diagnosticChart.querySelector(`[data-diagnostic-track="${key}"]`);
+      track.hidden = !selected.has(key);
+      if (track.hidden) continue;
+      const samples = diagnosticHistory[key] || [];
+      const values = samples.length ? samples : [0];
+      const minimum = Math.min(...values);
+      const maximum = Math.max(...values);
+      const dataRange = maximum - minimum;
+      const padding = dataRange > 0 ? dataRange * 0.1 : Math.max(1, Math.abs(maximum) * 0.1);
+      const scaleMinimum = Math.max(0, minimum - padding);
+      const scaleMaximum = maximum + padding;
+      const scaleRange = Math.max(1, scaleMaximum - scaleMinimum);
+      const points = values.map((value, index) => {
+        const x = values.length === 1 ? 300 : index * 300 / (values.length - 1);
+        const y = 58 - ((value - scaleMinimum) / scaleRange) * 52;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      }).join(" ");
+      track.querySelector("[data-chart-line]").setAttribute("points", points);
+      track.querySelector("[data-chart-current]").textContent = formatDiagnosticValue(values[values.length - 1], metric);
+      track.querySelector("[data-chart-min]").textContent = formatDiagnosticValue(minimum, metric, false);
+      track.querySelector("[data-chart-max]").textContent = formatDiagnosticValue(maximum, metric, false);
+    }
+  }
+
+  function recordDiagnosticMetrics(status, presenter) {
+    const values = {
+      rgbFps: Number(status.rgbFps || 0),
+      alphaFps: Number(status.alphaFps || 0),
+      p95FrameMs: Number(presenter.p95FrameMs || 0),
+      tickJitterUs: Number(presenter.tickJitterUs || 0),
+      presentSkewUs: Number(presenter.pairedPresentSkewUs || 0),
+      gpuQueue: Number(presenter.queueDepth || 0)
+    };
+    for (const [key, value] of Object.entries(values)) {
+      const history = diagnosticHistory[key];
+      history.push(Number.isFinite(value) ? value : 0);
+      if (history.length > DIAGNOSTIC_HISTORY_LENGTH) history.shift();
+    }
+    renderDiagnosticCharts();
+  }
+
+  function setActiveInspectorPanel(panel, persist = true) {
+    const allowed = new Set(["input", "signal", "output", "diagnostics"]);
+    const selected = allowed.has(panel) ? panel : "input";
+    activeInspectorPanel = selected;
+    for (const button of elements.inspectorTabs) {
+      const active = button.dataset.inspectorTab === selected;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    }
+    for (const panelElement of elements.inspectorPanels) {
+      panelElement.hidden = panelElement.dataset.inspectorPanel !== selected;
+    }
+    if (persist) localStorage.setItem("inspectorPanel", selected);
+    renderDiagnosticCharts();
   }
 
   function setPill(element, text, tone) {
@@ -400,7 +538,7 @@
   async function startUrlSource() {
     const url = elements.urlInput.value.trim();
     if (!url) {
-      log("请输入 URL 地址", "warn");
+      log(t("log.enterUrl"), "warn");
       return;
     }
     const viewportMode = elements.urlViewportMode.value;
@@ -428,37 +566,39 @@
       state.placeholderDrawn = true;
       resizePipeline(width, height);
       setMode("url", url);
-      setPill(elements.signalState, "URL 加载中", "warn");
+      setPill(elements.signalState, t("status.urlLoading"), "warn");
       state.currentSourceKey = `url:${url}`;
       elements.sourceMeta.textContent = `${width} x ${height} · ${Number(status.fps || 30).toFixed(2)} fps`;
       localStorage.setItem("urlInput", url);
-      log(`正在载入 URL：${url}`);
+      log(t("log.loadingUrl", { url }));
     } catch (error) {
-      setPill(elements.signalState, "URL 加载失败", "error");
-      elements.urlHint.textContent = error.message;
-      log(`URL 加载失败：${error.message}`, "error");
+      setPill(elements.signalState, t("status.urlLoadFailed"), "error");
+      const message = localizedError(error);
+      elements.urlHint.textContent = message;
+      log(t("log.urlLoadFailed", { message }), "error");
     }
   }
 
   function handleUrlStatus(status) {
     if (!status) return;
     if (status.state === "running" && state.mode === "url") {
-      setPill(elements.signalState, "URL 正常", "ok");
-      elements.urlHint.textContent = `URL 内容正在输出 · ${Number(status.actualFps || 0).toFixed(0)} fps`;
+      setPill(elements.signalState, t("status.urlNormal"), "ok");
+      elements.urlHint.textContent = t("status.urlContent", { fps: Number(status.actualFps || 0).toFixed(0) });
       if (status.naturalSize) {
-        elements.urlPageType.textContent = `${status.naturalSize.type} · ${status.naturalSize.width} x ${status.naturalSize.height}`;
+        const pageType = t(`page.${status.naturalSize.type}`);
+        elements.urlPageType.textContent = `${pageType} · ${status.naturalSize.width} x ${status.naturalSize.height}`;
         if (elements.urlViewportMode.value === "natural" && status.naturalSize.type !== "page") {
           window.ndiClient.setUrlViewport({ mode: "natural", width: status.naturalSize.width, height: status.naturalSize.height });
         }
       }
       if (status.detectedSignal) applyDetectedSignal(status.detectedSignal);
     } else if (status.state === "frozen" && state.mode === "url") {
-      setPill(elements.signalState, "URL 画面冻结", "error");
-      elements.urlHint.textContent = `已连续 ${Math.max(1, Math.round(Number(status.frozenMs || 0) / 1000))} 秒未收到新画面，可手动刷新页面。`;
+      setPill(elements.signalState, t("status.urlFrozen"), "error");
+      elements.urlHint.textContent = t("status.urlFrozenHint", { seconds: Math.max(1, Math.round(Number(status.frozenMs || 0) / 1000)) });
     } else if (status.state === "error") {
-      setPill(elements.signalState, "URL 错误", "error");
-      elements.urlHint.textContent = status.error || "URL 渲染进程发生错误。";
-      log(`URL 渲染错误：${elements.urlHint.textContent}`, "error");
+      setPill(elements.signalState, t("status.urlError"), "error");
+      elements.urlHint.textContent = status.error || t("status.urlRenderError");
+      log(t("log.urlRenderFailed", { message: elements.urlHint.textContent }), "error");
     }
   }
 
@@ -490,7 +630,17 @@
     const urlInput = localStorage.getItem("urlInput");
     const urlAllowLan = localStorage.getItem("urlAllowLan");
     const themeMode = localStorage.getItem("themeMode") || "system";
-    const diagnosticsVisible = localStorage.getItem("diagnosticsVisible") !== "false";
+    const inspectorPanel = localStorage.getItem("inspectorPanel") || "input";
+    let diagnosticChartMetrics;
+    try {
+      diagnosticChartMetrics = JSON.parse(localStorage.getItem("diagnosticChartMetrics") || "null");
+    } catch (_) {
+      diagnosticChartMetrics = null;
+    }
+    if (!Array.isArray(diagnosticChartMetrics) || !diagnosticChartMetrics.some((key) => DIAGNOSTIC_METRICS[key])) {
+      const legacyMetric = localStorage.getItem("diagnosticChartMetric");
+      diagnosticChartMetrics = DIAGNOSTIC_METRICS[legacyMetric] ? [legacyMetric] : ["rgbFps", "alphaFps"];
+    }
     if (alphaGain !== null) elements.alphaGain.value = alphaGain;
     if (invertAlpha !== null) elements.invertAlpha.checked = invertAlpha === "true";
     if (showCheckerboard !== null) elements.showCheckerboard.checked = showCheckerboard === "true";
@@ -499,7 +649,8 @@
     if (urlInput) elements.urlInput.value = urlInput;
     if (urlAllowLan !== null) elements.urlAllowLan.checked = urlAllowLan === "true";
     applyTheme(themeMode);
-    setDiagnosticsVisible(diagnosticsVisible);
+    for (const input of elements.diagnosticMetricInputs) input.checked = diagnosticChartMetrics.includes(input.value);
+    setActiveInspectorPanel(inspectorPanel, false);
     setInputMode(inputMode === "url" ? "url" : "ndi");
     updateAlphaControls();
     updateCheckerboard();
@@ -508,6 +659,22 @@
   function updateCheckerboard() {
     elements.sourceWrap.classList.toggle("checker", elements.showCheckerboard.checked);
     localStorage.setItem("showCheckerboard", String(elements.showCheckerboard.checked));
+  }
+
+  function controlValueLabel(control) {
+    return control.selectedOptions && control.selectedOptions.length ? control.selectedOptions[0].textContent.trim() : control.value;
+  }
+
+  function toggleStateLabel(checked) {
+    return checked ? t("state.on") : t("state.off");
+  }
+
+  function cropStateLabel() {
+    const crop = state.signalConfig.cropRect || { x: 0, y: 0, width: 1, height: 1 };
+    return t("crop.summary", {
+      left: (crop.x * 100).toFixed(1), top: (crop.y * 100).toFixed(1),
+      width: (crop.width * 100).toFixed(1), height: (crop.height * 100).toFixed(1)
+    });
   }
 
   function updateReliabilitySettings() {
@@ -522,8 +689,9 @@
     for (const select of [elements.rgbDisplaySelect, elements.alphaDisplaySelect]) {
       select.innerHTML = "";
       for (const display of displays) {
-        const suffix = display.primary ? "（主显示器）" : "";
-        select.add(new Option(`${display.name}${suffix}`, display.id));
+        const suffix = display.primary ? t("option.primaryDisplay") : "";
+        const displayName = display.id === "browser" ? t("source.browser") : display.name || t("option.display", { number: display.ordinal || 1 });
+        select.add(new Option(`${displayName}${suffix}`, display.id));
       }
     }
     const rgbSaved = localStorage.getItem("rgbDisplayId");
@@ -541,11 +709,12 @@
     state.bridgeAvailable = Boolean(status.available);
     elements.metricRuntime.textContent = status.runtime || "Browser";
     if (status.available) {
-      setPill(elements.bridgeState, `NDI Bridge 就绪${status.sdk ? ` ${status.sdk}` : ""}`, "ok");
-      elements.ndiHint.textContent = "可搜索局域网内 Full NDI 源。";
+      setPill(elements.bridgeState, t("status.bridgeReady", { sdk: status.sdk ? ` ${status.sdk}` : "" }), "ok");
+      elements.ndiHint.textContent = t("hint.ndiSearchReady");
     } else {
-      setPill(elements.bridgeState, "NDI Bridge 未启用", "warn");
-      elements.ndiHint.textContent = status.reason || "未检测到 NDI Bridge，仅可使用测试源和文件输入。";
+      setPill(elements.bridgeState, t("status.bridgeDisabled"), "warn");
+      elements.ndiHint.textContent = t("hint.ndiBridgeMissing");
+      elements.ndiHint.title = "";
     }
     elements.connectNdiBtn.disabled = !state.bridgeAvailable;
     return status;
@@ -555,7 +724,7 @@
     elements.refreshNdiBtn.disabled = true;
     elements.connectNdiBtn.disabled = true;
     elements.ndiSourceSelect.innerHTML = "";
-    const loading = new Option("正在搜索 NDI 源...", "");
+    const loading = new Option(t("option.searchingNdi"), "");
     elements.ndiSourceSelect.add(loading);
 
     try {
@@ -565,8 +734,8 @@
       elements.ndiSourceSelect.innerHTML = "";
 
       if (!sources.length) {
-        elements.ndiSourceSelect.add(new Option(state.bridgeAvailable ? "未发现 NDI 源" : "NDI Bridge 不可用", ""));
-        log(state.bridgeAvailable ? "未发现局域网 NDI 源" : "NDI Bridge 不可用，跳过 NDI 搜索", "warn");
+        elements.ndiSourceSelect.add(new Option(state.bridgeAvailable ? t("option.noNdiSources") : t("option.ndiUnavailable"), ""));
+        log(state.bridgeAvailable ? t("log.ndiNotFound") : t("log.ndiSearchSkipped"), "warn");
         return;
       }
 
@@ -574,11 +743,11 @@
         const label = source.name || source.id || "Unnamed NDI Source";
         elements.ndiSourceSelect.add(new Option(label, source.id || label));
       }
-      log(`发现 ${sources.length} 个 NDI 源`);
+      log(t("log.ndiSourcesFound", { count: sources.length }));
     } catch (error) {
       elements.ndiSourceSelect.innerHTML = "";
-      elements.ndiSourceSelect.add(new Option("NDI 搜索失败", ""));
-      log(`NDI 搜索失败：${error.message}`, "error");
+      elements.ndiSourceSelect.add(new Option(t("option.ndiSearchFailed"), ""));
+      log(t("log.ndiSearchFailed", { message: error.message }), "error");
     } finally {
       elements.refreshNdiBtn.disabled = false;
       elements.connectNdiBtn.disabled = !state.bridgeAvailable;
@@ -587,7 +756,7 @@
 
   async function connectNdiSource(id, reconnecting = false) {
     if (!id) {
-      log("请选择一个 NDI 源", "warn");
+      log(t("log.selectNdi"), "warn");
       return;
     }
 
@@ -608,12 +777,12 @@
       state.ndiConnectedAt = performance.now();
       state.lastNdiFrameAt = 0;
       setMode("ndi", state.ndiConnectedSource.name || id);
-      setPill(elements.signalState, reconnecting ? "等待恢复" : "等待信号", "warn");
-      elements.sourceMeta.textContent = reconnecting ? "正在重连，保持最后一帧" : "等待 NDI 视频帧";
-      log(`${reconnecting ? "正在重连" : "已连接"} NDI 源：${elements.metricInput.textContent}`);
+      setPill(elements.signalState, reconnecting ? t("status.waitingRecovery") : t("status.waitingSignal"), "warn");
+      elements.sourceMeta.textContent = reconnecting ? t("preview.waitingReconnect") : t("preview.waitingVideo");
+      log(t("log.ndiConnected", { prefix: reconnecting ? t("log.reconnecting") : t("log.connecting"), source: elements.metricInput.textContent }));
     } catch (error) {
-      log(`${reconnecting ? "NDI 重连" : "连接 NDI"}失败：${error.message}`, "error");
-      if (!reconnecting) setPill(elements.signalState, "连接失败", "error");
+      log(t("log.ndiConnectFailed", { prefix: reconnecting ? t("log.reconnectNdi") : t("log.connectNdi"), message: error.message }), "error");
+      if (!reconnecting) setPill(elements.signalState, t("status.connectionFailed"), "error");
     }
   }
 
@@ -630,9 +799,9 @@
     state.ndiConnectedSource = null;
     state.selectedNdiSourceId = null;
     state.ndiHasFrame = false;
-    setPill(elements.signalState, "信号待机", null);
+    setPill(elements.signalState, t("status.signalIdle"), null);
     startTestPattern(false);
-    log("已断开当前输入，切回测试源");
+    log(t("log.disconnected"));
   }
 
   function startTestPattern(stopRemote = true) {
@@ -642,7 +811,7 @@
     }
     window.ndiClient.activateLocalSource().then((source) => {
       state.localGeneration = Number(source.generation || 0);
-    }).catch((error) => log(`输入源切换失败：${error.message}`, "error"));
+    }).catch((error) => log(t("log.sourceSwitchFailed", { message: error.message }), "error"));
     clearObjectUrl();
     elements.hiddenVideo.pause();
     elements.hiddenVideo.removeAttribute("src");
@@ -650,11 +819,11 @@
     resizePipeline(DEFAULT_WIDTH, DEFAULT_HEIGHT);
     state.currentSourceKey = "test";
     applyDetectedSignal({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, frameRateN: 30, frameRateD: 1,
-      pixelFormat: "RGBA", primaries: "rec709", range: "full", detectionSource: "内置测试源", confidence: "high" });
+      pixelFormat: "RGBA", primaries: "rec709", range: "full", detectionSource: t("source.builtinTest"), confidence: "high" });
     state.frameDirty = true;
-    setMode("test", "测试源");
-    setPill(elements.signalState, "本地信号", "ok");
-    elements.sourceMeta.textContent = `${DEFAULT_WIDTH} x ${DEFAULT_HEIGHT} 测试信号`;
+    setMode("test", t("source.test"));
+    setPill(elements.signalState, t("status.localSignal"), "ok");
+    elements.sourceMeta.textContent = t("preview.testSignal", { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
   }
 
   async function loadLocalFile(file) {
@@ -674,12 +843,12 @@
         state.currentSourceKey = `file:${file.name}`;
         applyDetectedSignal({ width: elements.hiddenImage.naturalWidth, height: elements.hiddenImage.naturalHeight,
           frameRateN: 1, frameRateD: 1, pixelFormat: file.type || "image", primaries: "rec709", range: "full",
-          detectionSource: "浏览器媒体", confidence: "medium" });
+          detectionSource: t("source.browserMedia"), confidence: "medium" });
         state.imageDrawn = false;
         setMode("image", file.name);
-        setPill(elements.signalState, "本地信号", "ok");
-        elements.sourceMeta.textContent = `${elements.hiddenImage.naturalWidth} x ${elements.hiddenImage.naturalHeight} 图片`;
-        log(`载入图片：${file.name}`);
+        setPill(elements.signalState, t("status.localSignal"), "ok");
+        elements.sourceMeta.textContent = t("preview.imageSignal", { width: elements.hiddenImage.naturalWidth, height: elements.hiddenImage.naturalHeight });
+        log(t("log.imageLoaded", { name: file.name }));
       };
       return;
     }
@@ -687,7 +856,7 @@
     elements.hiddenImage.removeAttribute("src");
     elements.hiddenVideo.src = state.objectUrl;
     elements.hiddenVideo.onerror = () => {
-      log(`视频无法解码：${file.name}`, "error");
+      log(t("log.videoDecodeFailed", { name: file.name }), "error");
       startTestPattern();
     };
 
@@ -698,14 +867,14 @@
       const h = elements.hiddenVideo.videoHeight || DEFAULT_HEIGHT;
       state.currentSourceKey = `file:${file.name}`;
       applyDetectedSignal({ width: w, height: h, frameRateN: 30, frameRateD: 1, pixelFormat: file.type || "video",
-        primaries: "rec709", range: "full", detectionSource: "浏览器媒体", confidence: "low" });
-      setPill(elements.signalState, "本地信号", "ok");
+        primaries: "rec709", range: "full", detectionSource: t("source.browserMedia"), confidence: "low" });
+      setPill(elements.signalState, t("status.localSignal"), "ok");
       resizePipeline(w, h);
       state.lastMediaTime = -1;
-      elements.sourceMeta.textContent = `${w} x ${h} 视频`;
-      log(`载入视频：${file.name}`);
+      elements.sourceMeta.textContent = t("preview.videoSignal", { width: w, height: h });
+      log(t("log.videoLoaded", { name: file.name }));
     } catch (error) {
-      log(`视频播放失败：${error.message}`, "error");
+      log(t("log.videoPlayFailed", { message: error.message }), "error");
     }
   }
 
@@ -767,7 +936,7 @@
     ctx.source.fillText("NDI CONNECTED", 96, 238);
     ctx.source.fillStyle = "rgba(238,243,244,0.72)";
     ctx.source.font = "24px Segoe UI, Arial";
-    ctx.source.fillText("等待原生 NDI Bridge 推送 RGBA 视频帧", 98, 286);
+    ctx.source.fillText(t("preview.waitingNdi"), 98, 286);
   }
 
   function splitFrame() {
@@ -797,12 +966,14 @@
       state.ndiHasAlpha = Boolean(frame.hasAlpha);
       if (frame.detectedSignal) applyDetectedSignal(frame.detectedSignal);
       state.lastNdiFrameAt = performance.now();
-      setPill(elements.signalState, state.mode === "url" ? "URL 正常" : "NDI 正常", "ok");
+      setPill(elements.signalState, state.mode === "url" ? t("status.urlNormal") : t("status.ndiNormal"), "ok");
       state.frameDirty = true;
       const fps = frame.frameRateD ? frame.frameRateN / frame.frameRateD : 0;
-      elements.sourceMeta.textContent = `${width} x ${height} · ${fps.toFixed(2)} fps · ${state.ndiHasAlpha ? "含 Alpha" : "无 Alpha"}`;
+      elements.sourceMeta.textContent = t("preview.liveSignal", {
+        width, height, fps: fps.toFixed(2), alpha: state.ndiHasAlpha ? t("preview.hasAlpha") : t("preview.noAlpha")
+      });
     }).catch((error) => {
-      log(`NDI 帧接收失败：${error.message}`, "error");
+      log(t("log.ndiFrameFailed", { message: error.message }), "error");
     }).finally(() => {
       state.ndiFramePending = false;
     });
@@ -826,7 +997,7 @@
           ? now - state.lastNdiFrameAt
           : now - state.ndiConnectedAt;
       if (age > 2000) {
-        setPill(elements.signalState, `信号中断 ${Math.floor(age / 1000)}s`, "error");
+        setPill(elements.signalState, t("status.signalInterrupted", { seconds: Math.floor(age / 1000) }), "error");
       }
 
       const canReconnect = elements.autoReconnect.checked &&
@@ -838,7 +1009,7 @@
         await connectNdiSource(state.selectedNdiSourceId, true);
       }
     } catch (error) {
-      log(`NDI 监测失败：${error.message}`, "error");
+      log(t("log.ndiMonitorFailed", { message: error.message }), "error");
     } finally {
       state.watchdogPending = false;
     }
@@ -890,7 +1061,7 @@
     localStorage.setItem(`sourceGeometry:${state.currentSourceKey}`, JSON.stringify({
       scalingMode: state.signalConfig.scalingMode, cropRect: state.signalConfig.cropRect
     }));
-    elements.signalHint.textContent = `${state.signalConfig.outputPrimaries.toUpperCase()} ${state.signalConfig.outputRange} SDR · ${state.signalConfig.formatPreset}`;
+    renderSignalHint();
     elements.scanMode.value = state.signalConfig.scanSelection || "progressive";
     elements.customOutputResolution.hidden = state.signalConfig.outputResolution !== "custom";
     updatePreviewDimensions();
@@ -907,6 +1078,27 @@
     return `sourceColor:${state.currentSourceKey}`;
   }
 
+  function renderSignalHint() {
+    const formatLabel = state.signalConfig.formatPreset || `${state.signalConfig.outputWidth || state.width}x${state.signalConfig.outputHeight || state.height} @ ${state.signalConfig.outputFrameRate || 30} fps`;
+    elements.signalHint.textContent = `${controlValueLabel(elements.outputPrimaries)} ${controlValueLabel(elements.outputRange)} SDR · ${formatLabel}`;
+  }
+
+  function renderDetectionState() {
+    if (state.signalConfig.manualColorLocked) {
+      elements.colorDetectionState.textContent = t("status.manualLocked");
+      return;
+    }
+    if (!state.detectedSignal) {
+      elements.colorDetectionState.textContent = t("status.waitingInput");
+      return;
+    }
+    let detectionSource = state.detectedSignal.detectionSource;
+    if (state.mode === "test") detectionSource = t("source.builtinTest");
+    else if (state.mode === "image" || state.mode === "video") detectionSource = t("source.browserMedia");
+    else if (!detectionSource) detectionSource = t("source.pixelFormatInference");
+    elements.colorDetectionState.textContent = `${detectionSource} · ${t(`detection.${state.detectedSignal.confidence || "low"}`)}`;
+  }
+
   function parseMetadataColor(metadata) {
     if (!metadata || typeof DOMParser === "undefined") return null;
     try {
@@ -918,7 +1110,7 @@
       const primaries = /(?:rec|bt)[ ._-]?2020/.test(values) ? "rec2020" : /(?:rec|bt)[ ._-]?709/.test(values) ? "rec709" : null;
       const range = /(?:range|levels?)[ =:_-]*(?:full|pc|jpeg)/.test(values) ? "full" :
         /(?:range|levels?)[ =:_-]*(?:limited|video|tv)/.test(values) ? "limited" : null;
-      return primaries || range ? { primaries, range, detectionSource: "NDI XML", confidence: "high" } : null;
+      return primaries || range ? { primaries, range, detectionSource: t("detection.ndiXml"), confidence: "high" } : null;
     } catch (_) {
       return null;
     }
@@ -940,7 +1132,7 @@
     const inferred = {
       primaries: metadataColor && metadataColor.primaries || detected.primaries || "rec709",
       range: metadataColor && metadataColor.range || detected.range || (/UYVY|UYVA|P216|PA16|NV12|I420|YV12/i.test(detected.pixelFormat || "") ? "limited" : "full"),
-      detectionSource: metadataColor && metadataColor.detectionSource || detected.detectionSource || "像素格式推断",
+      detectionSource: metadataColor && metadataColor.detectionSource || detected.detectionSource || t("source.pixelFormatInference"),
       confidence: metadataColor && metadataColor.confidence || detected.confidence || "low"
     };
     const saved = JSON.parse(localStorage.getItem(sourceColorKey()) || "null");
@@ -949,14 +1141,15 @@
       state.signalConfig.autoColor = false;
       elements.sourcePrimaries.value = saved.sourcePrimaries;
       elements.sourceRange.value = saved.sourceRange;
-      elements.colorDetectionState.textContent = "手动锁定";
+      renderDetectionState();
     } else if (!state.signalConfig.manualColorLocked) {
       state.signalConfig.autoColor = true;
       elements.sourcePrimaries.value = inferred.primaries;
       elements.sourceRange.value = inferred.range;
-      elements.colorDetectionState.textContent = `${inferred.detectionSource} · ${inferred.confidence}`;
+      state.detectedSignal = { ...state.detectedSignal, detectionSource: inferred.detectionSource, confidence: inferred.confidence };
+      renderDetectionState();
     }
-    updateSignalConfig().catch((error) => log(`自动信号设置失败：${error.message}`, "error"));
+    updateSignalConfig().catch((error) => log(t("log.autoSignalFailed", { message: error.message }), "error"));
   }
 
   function cropFromInputs() {
@@ -1092,7 +1285,9 @@
     const finish = () => {
       if (!drag) return;
       drag = null;
-      updateSignalConfig().catch((error) => log(`裁切设置失败：${error.message}`, "error"));
+      updateSignalConfig()
+        .then(() => log(t("log.cropUpdated", { crop: cropStateLabel() })))
+        .catch((error) => log(t("log.cropFailed", { message: error.message }), "error"));
     };
     elements.cropOverlay.addEventListener("pointerup", finish);
     elements.cropOverlay.addEventListener("pointercancel", finish);
@@ -1103,9 +1298,11 @@
       window.ndiClient.getAppInfo(), window.ndiClient.getEngineStatus(), window.ndiClient.getSignalConfig(), window.ndiClient.getLogStatus()
     ]);
     elements.versionState.textContent = `v${appInfo.version}`;
-    setPill(elements.engineState, engine.backend === "gpu" ? "GPU 后端" : "兼容后端", engine.backend === "gpu" ? "ok" : "warn");
+    setPill(elements.engineState, engine.backend === "gpu" ? t("status.gpuBackend") : t("status.compatibilityBackend"), engine.backend === "gpu" ? "ok" : "warn");
     elements.engineState.title = engine.reason || "";
-    for (const [value, resolution] of Object.entries(signal.resolutions || {})) elements.outputResolution.add(new Option(resolution.label, value));
+    for (const [value, resolution] of Object.entries(signal.resolutions || {})) {
+      elements.outputResolution.add(new Option(value === "custom" ? t("option.custom") : resolution.label, value));
+    }
     for (const value of Object.keys(signal.frameRates || {})) elements.outputFrameRate.add(new Option(`${value} fps`, value));
     for (const adapter of signal.adapters || []) {
       if (adapter.software) continue;
@@ -1123,14 +1320,15 @@
     state.signalConfig = config;
     elements.customOutputWidth.value = String(config.outputWidth || 1920);
     elements.customOutputHeight.value = String(config.outputHeight || 1080);
-    elements.logPathState.textContent = logs.fallback ? "用户日志目录" : "安装目录 logs";
+    elements.logPathState.dataset.fallback = String(Boolean(logs.fallback));
+    elements.logPathState.textContent = logs.fallback ? t("state.userLogs") : t("state.installLogs");
     elements.logPathState.title = logs.directory || "";
     await updateSignalConfig();
   }
 
   function updateMetrics(now) {
     if (now - state.lastFpsTime >= 1000) {
-      elements.frameRate.textContent = `预览 ${state.framesThisSecond} fps`;
+      elements.frameRate.textContent = t("status.previewFps", { fps: state.framesThisSecond });
       state.framesThisSecond = 0;
       state.lastFpsTime = now;
     }
@@ -1205,13 +1403,13 @@
       fullscreen: forceFullscreen || elements.autoFullscreen.checked
     });
     if (!opened) {
-      log(`${title} 仅可在 Electron 桌面模式中打开`, "error");
+      log(t("log.desktopOnly", { title }), "error");
       return false;
     }
     if (kind === "rgb") state.rgbOutput = true;
     else state.alphaOutput = true;
     if (state.mode !== "ndi" && state.mode !== "url") publishLocalFrame(performance.now(), true);
-    log(`${title} 已打开`);
+    log(t("log.outputOpened", { title }));
     return true;
   }
 
@@ -1222,7 +1420,7 @@
     ]);
     state.rgbOutput = rgbOpened;
     state.alphaOutput = alphaOpened;
-    if (rgbOpened || alphaOpened) log("RGB 与 Alpha 输出已打开并请求全屏");
+    if (rgbOpened || alphaOpened) log(t("log.allOutputsOpened"));
   }
 
   async function refreshOutputStatus() {
@@ -1233,16 +1431,50 @@
     elements.metricRgbOutputFps.textContent = Number(status.rgbFps || 0).toFixed(1);
     elements.metricAlphaOutputFps.textContent = Number(status.alphaFps || 0).toFixed(1);
     const presenter = status.presenter || {};
-    elements.metricGpuAdapter.textContent = presenter.adapterName || "兼容后端";
+    elements.metricGpuAdapter.textContent = presenter.adapterName || t("status.compatibilityBackend");
     elements.metricGpuAdapter.title = presenter.adapterLuid || presenter.lastError || "";
     elements.metricGpuQueue.textContent = String(Number(presenter.queueDepth || 0));
     elements.metricGpuOverwritten.textContent = Number(presenter.overwrittenFrames || 0).toLocaleString();
     elements.metricGpuP95.textContent = `${Number(presenter.p95FrameMs || 0).toFixed(2)} ms`;
-    elements.metricSyncMode.textContent = presenter.frameSyncActive ? "FrameSync" : "低延迟";
+    elements.metricSyncMode.textContent = presenter.frameSyncActive ? t("state.frameSync") : t("state.lowLatency");
     elements.metricClockSource.textContent = presenter.clockSource || "host-monotonic";
     elements.metricClockJitter.textContent = `${Number(presenter.tickJitterUs || 0).toFixed(0)} us`;
     elements.metricPresentSkew.textContent = `${Number(presenter.pairedPresentSkewUs || 0).toFixed(0)} us`;
+    recordDiagnosticMetrics(status, presenter);
     if (outputsChanged) updatePreviewDimensions();
+  }
+
+  async function refreshLocalizedUi() {
+    initializeDiagnosticCharts();
+    renderDiagnosticCharts();
+    const customResolution = Array.from(elements.outputResolution.options).find((option) => option.value === "custom");
+    if (customResolution) customResolution.textContent = t("option.custom");
+    if (elements.logPathState.dataset.fallback) {
+      elements.logPathState.textContent = elements.logPathState.dataset.fallback === "true" ? t("state.userLogs") : t("state.installLogs");
+    }
+    renderDetectionState();
+    renderSignalHint();
+    if (state.mode === "test") {
+      setMode("test", t("source.test"));
+      setPill(elements.signalState, t("status.localSignal"), "ok");
+      elements.sourceMeta.textContent = t("preview.testSignal", { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
+    } else if (state.mode === "image") {
+      setPill(elements.signalState, t("status.localSignal"), "ok");
+      elements.sourceMeta.textContent = t("preview.imageSignal", { width: state.width, height: state.height });
+    } else if (state.mode === "video") {
+      setPill(elements.signalState, t("status.localSignal"), "ok");
+      elements.sourceMeta.textContent = t("preview.videoSignal", { width: state.width, height: state.height });
+    }
+    elements.frameRate.textContent = t("status.previewFps", { fps: state.framesThisSecond });
+    const [engine, urlStatus] = await Promise.all([
+      window.ndiClient.getEngineStatus(), window.ndiClient.getUrlStatus()
+    ]);
+    setPill(elements.engineState, engine.backend === "gpu" ? t("status.gpuBackend") : t("status.compatibilityBackend"), engine.backend === "gpu" ? "ok" : "warn");
+    elements.engineState.title = engine.reason || "";
+    await refreshBridgeStatus();
+    await populateDisplays();
+    if (state.mode === "url") handleUrlStatus(urlStatus);
+    await refreshOutputStatus();
   }
 
   function saveSnapshot() {
@@ -1254,52 +1486,117 @@
     link.download = `alpha-split-${timestamp}.png`;
     link.href = elements.rgbCanvas.toDataURL("image/png");
     link.click();
-    log(`已保存 RGB 快照：${link.download}`);
+    log(t("log.snapshotSaved", { name: link.download }));
   }
 
   function bindEvents() {
-    elements.themeMode.addEventListener("change", () => applyTheme(elements.themeMode.value));
-    elements.toggleDiagnosticsBtn.addEventListener("click", () => setDiagnosticsVisible(elements.diagnosticsSection.hidden));
+    elements.themeMode.addEventListener("change", () => {
+      applyTheme(elements.themeMode.value);
+      log(t("log.themeChanged", { value: controlValueLabel(elements.themeMode) }));
+    });
+    window.addEventListener("i18n:changed", () => {
+      refreshLocalizedUi()
+        .then(() => log(t("log.languageChanged", { value: controlValueLabel(elements.languageMode) })))
+        .catch((error) => log(t("log.signalFailed", { message: error.message }), "warn"));
+    });
+    for (const button of elements.inspectorTabs) {
+      button.addEventListener("click", () => setActiveInspectorPanel(button.dataset.inspectorTab));
+    }
+    for (const input of elements.diagnosticMetricInputs) {
+      input.addEventListener("change", () => {
+        let selected = selectedDiagnosticMetrics();
+        if (!selected.length) {
+          input.checked = true;
+          selected = [input.value];
+        }
+        localStorage.setItem("diagnosticChartMetrics", JSON.stringify(selected));
+        renderDiagnosticCharts();
+      });
+    }
     elements.openLogsBtn.addEventListener("click", () => window.ndiClient.openLogDirectory());
     elements.ndiModeBtn.addEventListener("click", async () => {
       if (state.mode === "url") await stopUrlSource(true);
       setInputMode("ndi");
+      log(t("log.inputNdi"));
     });
-    elements.urlModeBtn.addEventListener("click", () => setInputMode("url"));
-    elements.urlAllowLan.addEventListener("change", () => localStorage.setItem("urlAllowLan", String(elements.urlAllowLan.checked)));
+    elements.urlModeBtn.addEventListener("click", () => {
+      setInputMode("url");
+      log(t("log.inputUrl"));
+    });
+    elements.urlAllowLan.addEventListener("change", () => {
+      localStorage.setItem("urlAllowLan", String(elements.urlAllowLan.checked));
+      log(t("log.lanAccess", { value: toggleStateLabel(elements.urlAllowLan.checked) }));
+    });
+    elements.urlTransparent.addEventListener("change", () => {
+      log(t("log.transparentBackground", { value: toggleStateLabel(elements.urlTransparent.checked) }));
+    });
     elements.loadUrlBtn.addEventListener("click", startUrlSource);
     elements.refreshUrlBtn.addEventListener("click", async () => {
       const refreshed = await window.ndiClient.refreshUrl();
-      if (refreshed) log("已手动刷新 URL 页面");
+      if (refreshed) log(t("log.urlRefreshed"));
     });
     elements.stopUrlBtn.addEventListener("click", () => stopUrlSource(true));
     elements.urlViewportMode.addEventListener("change", () => {
       elements.urlViewportCustom.hidden = elements.urlViewportMode.value !== "custom";
+      log(t("log.viewportMode", { value: controlValueLabel(elements.urlViewportMode) }));
     });
     for (const input of [elements.urlViewportWidth, elements.urlViewportHeight]) {
-      input.addEventListener("change", () => {
-        if (elements.urlViewportMode.value === "custom") window.ndiClient.setUrlViewport({ mode: "custom",
-          width: Number(elements.urlViewportWidth.value), height: Number(elements.urlViewportHeight.value) });
+      input.addEventListener("change", async () => {
+        if (elements.urlViewportMode.value === "custom") {
+          const width = Number(elements.urlViewportWidth.value);
+          const height = Number(elements.urlViewportHeight.value);
+          try {
+            await window.ndiClient.setUrlViewport({ mode: "custom", width, height });
+            log(t("log.viewportUpdated", { width, height }));
+          } catch (error) {
+            log(t("log.viewportFailed", { message: error.message }), "error");
+          }
+        }
       });
     }
     elements.urlInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") startUrlSource();
     });
-    for (const control of [elements.outputResolution, elements.outputFrameRate, elements.scanMode, elements.scalingMode,
-      elements.outputPrimaries, elements.outputRange, elements.gpuPreference, elements.previewPolicy, elements.syncMode]) {
-      control.addEventListener("change", () => updateSignalConfig().catch((error) => log(`信号设置失败：${error.message}`, "error")));
+    const signalControls = new Map([
+      [elements.outputResolution, "control.outputResolution"], [elements.outputFrameRate, "control.outputFrameRate"],
+      [elements.scanMode, "control.scanMode"], [elements.scalingMode, "control.scalingMode"],
+      [elements.outputPrimaries, "control.outputPrimaries"], [elements.outputRange, "control.outputRange"],
+      [elements.gpuPreference, "control.gpuPreference"], [elements.previewPolicy, "control.previewPolicy"],
+      [elements.syncMode, "control.syncMode"]
+    ]);
+    for (const [control, label] of signalControls) {
+      control.addEventListener("change", async () => {
+        try {
+          await updateSignalConfig();
+          log(t("log.controlChanged", { label: t(label), value: controlValueLabel(control) }));
+        } catch (error) {
+          log(t("log.signalFailed", { message: error.message }), "error");
+        }
+      });
     }
     for (const input of [elements.customOutputWidth, elements.customOutputHeight]) {
-      input.addEventListener("change", () => updateSignalConfig().catch((error) => log(`自定义分辨率失败：${error.message}`, "error")));
+      input.addEventListener("change", async () => {
+        try {
+          await updateSignalConfig();
+          log(t("log.customResolution", { width: elements.customOutputWidth.value, height: elements.customOutputHeight.value }));
+        } catch (error) {
+          log(t("log.customResolutionFailed", { message: error.message }), "error");
+        }
+      });
     }
     for (const control of [elements.sourcePrimaries, elements.sourceRange]) {
-      control.addEventListener("change", () => {
+      control.addEventListener("change", async () => {
         state.signalConfig.autoColor = false;
         state.signalConfig.manualColorLocked = true;
         localStorage.setItem(sourceColorKey(), JSON.stringify({ manualColorLocked: true,
           sourcePrimaries: elements.sourcePrimaries.value, sourceRange: elements.sourceRange.value }));
-        elements.colorDetectionState.textContent = "手动锁定";
-        updateSignalConfig().catch((error) => log(`信号设置失败：${error.message}`, "error"));
+        elements.colorDetectionState.textContent = t("status.manualLocked");
+        try {
+          await updateSignalConfig();
+          log(t("log.inputColorLocked", { primaries: controlValueLabel(elements.sourcePrimaries), range: controlValueLabel(elements.sourceRange) }));
+        } catch (error) {
+          log(t("log.signalFailed", { message: error.message }), "error");
+        }
       });
     }
     elements.restoreAutoColorBtn.addEventListener("click", () => {
@@ -1307,34 +1604,62 @@
       state.signalConfig.autoColor = true;
       state.signalConfig.manualColorLocked = false;
       applyDetectedSignal(state.detectedSignal, true);
+      log(t("log.autoColorRestored"));
     });
     for (const input of [elements.cropLeft, elements.cropTop, elements.cropRight, elements.cropBottom]) {
-      input.addEventListener("change", () => {
+      input.addEventListener("change", async () => {
         cropFromInputs();
-        updateSignalConfig().catch((error) => log(`裁切设置失败：${error.message}`, "error"));
+        try {
+          await updateSignalConfig();
+          log(t("log.cropUpdated", { crop: cropStateLabel() }));
+        } catch (error) {
+          log(t("log.cropFailed", { message: error.message }), "error");
+        }
       });
     }
     elements.resetCropBtn.addEventListener("click", () => {
       state.signalConfig.cropRect = { x: 0, y: 0, width: 1, height: 1 };
       renderCropOverlay();
-      updateSignalConfig();
+      updateSignalConfig()
+        .then(() => log(t("log.cropRestored")))
+        .catch((error) => log(t("log.cropFailed", { message: error.message }), "error"));
     });
+    elements.cropLockAspect.addEventListener("change", () => log(t("log.cropAspect", { value: toggleStateLabel(elements.cropLockAspect.checked) })));
     bindCropEditor();
     elements.refreshNdiBtn.addEventListener("click", refreshNdiSources);
     elements.connectNdiBtn.addEventListener("click", connectNdi);
     elements.disconnectBtn.addEventListener("click", disconnectInput);
     elements.testPatternBtn.addEventListener("click", () => {
       startTestPattern();
-      log("已启动测试源");
+      log(t("log.testStarted"));
     });
     elements.fileInput.addEventListener("change", (event) => loadLocalFile(event.target.files && event.target.files[0]));
     elements.alphaGain.addEventListener("input", updateAlphaControls);
-    elements.invertAlpha.addEventListener("change", updateAlphaControls);
-    elements.showCheckerboard.addEventListener("change", updateCheckerboard);
-    elements.autoReconnect.addEventListener("change", updateReliabilitySettings);
-    elements.autoFullscreen.addEventListener("change", updateReliabilitySettings);
-    elements.rgbDisplaySelect.addEventListener("change", updateReliabilitySettings);
-    elements.alphaDisplaySelect.addEventListener("change", updateReliabilitySettings);
+    elements.alphaGain.addEventListener("change", () => log(t("log.alphaGain", { value: state.alphaGain.toFixed(2) })));
+    elements.invertAlpha.addEventListener("change", () => {
+      updateAlphaControls();
+      log(t("log.alphaInvert", { value: toggleStateLabel(elements.invertAlpha.checked) }));
+    });
+    elements.showCheckerboard.addEventListener("change", () => {
+      updateCheckerboard();
+      log(t("log.checkerboard", { value: toggleStateLabel(elements.showCheckerboard.checked) }));
+    });
+    elements.autoReconnect.addEventListener("change", () => {
+      updateReliabilitySettings();
+      log(t("log.autoReconnect", { value: toggleStateLabel(elements.autoReconnect.checked) }));
+    });
+    elements.autoFullscreen.addEventListener("change", () => {
+      updateReliabilitySettings();
+      log(t("log.autoFullscreen", { value: toggleStateLabel(elements.autoFullscreen.checked) }));
+    });
+    elements.rgbDisplaySelect.addEventListener("change", () => {
+      updateReliabilitySettings();
+      log(t("log.rgbDisplay", { value: controlValueLabel(elements.rgbDisplaySelect) }));
+    });
+    elements.alphaDisplaySelect.addEventListener("change", () => {
+      updateReliabilitySettings();
+      log(t("log.alphaDisplay", { value: controlValueLabel(elements.alphaDisplaySelect) }));
+    });
     elements.rgbWindowBtn.addEventListener("click", async () => {
       state.rgbOutput = await openOutput("rgb");
     });
@@ -1347,11 +1672,14 @@
       elements.eventLog.innerHTML = "";
     });
     window.addEventListener("focus", () => {
-      populateDisplays().catch((error) => log(`显示器刷新失败：${error.message}`, "warn"));
+      populateDisplays().catch((error) => log(t("log.displayRefreshFailed", { message: error.message }), "warn"));
     });
   }
 
   async function boot() {
+    await window.i18n.initialize();
+    elements.frameRate.textContent = t("status.previewFps", { fps: 0 });
+    initializeDiagnosticCharts();
     restoreSettings();
     bindEvents();
     await initializeSystemInfo();
@@ -1360,13 +1688,13 @@
     await refreshNdiSources();
     window.ndiClient.onUrlStatus(handleUrlStatus);
     document.body.dataset.appReady = "true";
-    log("系统启动完成");
+    log(t("log.startup"));
     tick(performance.now());
     window.ndiClient.onClockTick(() => {
       try {
         tick(performance.now());
       } catch (error) {
-        log(`渲染时钟错误：${error.message}`, "error");
+        log(t("log.renderClockFailed", { message: error.message }), "error");
       }
     });
     setInterval(runWatchdog, 1000);

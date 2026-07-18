@@ -27,7 +27,7 @@ Electron 发行文件中。
 RGB Alpha Splitter source code is licensed under the MIT License. Third-party
 software and trademarks remain subject to their respective terms.
 
-## NDI
+### NDI
 
 NDI, the NDI SDK, and the NDI Runtime are products and trademarks of Vizrt.
 They are not licensed under this project's MIT License. This repository does
@@ -38,12 +38,12 @@ a compatible NDI Runtime separately.
 RGB Alpha Splitter is an independent project and is not affiliated with,
 endorsed by, or sponsored by Vizrt.
 
-## Electron and Chromium
+### Electron and Chromium
 
 The application uses Electron and Chromium. Their license notices are supplied
 by their upstream projects and are included in packaged Electron distributions.
 
-## Node.js Packages
+### Node.js Packages
 
 Development dependencies are declared in `package.json` and locked by
 `package-lock.json`. Each package remains subject to its own license.

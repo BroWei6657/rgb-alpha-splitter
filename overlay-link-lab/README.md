@@ -1,26 +1,30 @@
 # Overlay Link Lab
 
-这是一个与旧应用运行代码隔离的单线 Overlay 研究项目。目标是让现有 RGB Alpha Splitter 的画面经一根 HDMI 或 Thunderbolt 线进入硬件，再由硬件输出同步的 HDMI FILL 和 HDMI KEY。
+[中文](#中文说明) | [English](#english)
 
-## 当前结论
+## 中文说明
 
-首版应选 **HDMI 2.0**，不应先做 Thunderbolt。
+Overlay Link Lab是与RGB Alpha Splitter运行代码隔离的硬件研究资料，探索通过一条HDMI链路
+传输FILL与KEY，再由外部硬件生成两路同步HDMI输出。它不是主程序的运行功能，也没有完成
+硬件实机验证。
 
-- PC 把 FILL 放在 4K60 帧左半边，把 KEY 放在右半边，并把每个 1080p 源行重复两次。
-- FPGA 接收标准 `3840x2160p60 RGB 4:4:4 8-bit`，用约 `15 KiB` 双行缓存拆成两路 `1920x1080p60`。
-- 两路输出共用同一个 148.5 MHz 时钟和同步计数器，能够保持帧、行同步。
-- HDMI 路线对 PC 表现为普通显示器，不需要专用硬件驱动。Thunderbolt 路线需要 PCIe DMA 驱动、控制器参考设计和认证，留到 HDMI 原型通过后再评估。
+### 当前结论
 
-理论模型已证明几何、时序和带宽关系成立，但目前还没有证明 HDMI PHY、EDID 兼容性、线缆误码率、双输出偏斜和真实切换台兼容性。这些必须在有硬件后实测。
+首个原型优先研究HDMI 2.0：PC在一帧`3840 x 2160p60 RGB 4:4:4 8-bit`画面中并排打包
+FILL和KEY，FPGA使用行缓存拆分为两路`1920 x 1080p60`。两路输出共用像素时钟与同步计数器，
+理论上能够保持帧、行同步。
 
-## 项目边界
+现有参考模型只验证了几何、时序和带宽关系。HDMI PHY、EDID、线缆误码、输出偏斜、许可和
+真实切换台兼容性均未验证，因此本文档不能作为可直接生产或采购的硬件方案。
 
-- 本目录不修改 `main.js`、`src/`、`native/` 或旧应用的输出逻辑。
-- 旧应用 ID `com.ndialphasplitter.desktop` 保持不变。
-- 旧共享内存标识 `Local\\NDIAlphaSplitter.Frame.v1` / `/NDIAlphaSplitter.Frame.v1` 保持不变。
-- 后续软件集成应做成独立 companion 进程，以只读方式消费旧共享帧，不改变旧应用协议。
+### 项目边界
 
-## 目录
+- 本目录不修改主程序的输入、输出、原生模块或兼容协议。
+- 软件集成应使用独立companion进程，以只读方式消费主程序输出。
+- 不包含HDCP、硬件genlock、SDI接口或已验证的量产设计。
+- Thunderbolt/PCIe路线仅为后续研究方向，不属于首个原型范围。
+
+### 目录
 
 ```text
 overlay-link-lab/
@@ -32,31 +36,77 @@ overlay-link-lab/
   tests/                 协议往返和错误检测测试
 ```
 
-## 立即运行
+### 本地验证
 
-直接打开：
-
-```text
-overlay-link-lab/simulator/index.html
-```
-
-运行理论验证和参考模型测试：
+直接打开`overlay-link-lab/simulator/index.html`可查看浏览器仿真器。运行理论与参考模型测试：
 
 ```powershell
 node overlay-link-lab\scripts\verify-theory.js
 node overlay-link-lab\tests\transport-core.test.js
 ```
 
-## 文档入口
+模拟器刷新率不代表硬件输出帧率；协议目标固定为60Hz。
+
+### 文档
 
 - [传输协议](docs/PROTOCOL.md)
-- [硬件型号与购置建议](docs/HARDWARE.md)
-- [软件、FPGA、PCB 和驱动实施过程](docs/IMPLEMENTATION.md)
-- [当前验证结果与硬件验收表](docs/VERIFICATION.md)
+- [硬件选型参考](docs/HARDWARE.md)
+- [实施过程](docs/IMPLEMENTATION.md)
+- [验证状态与验收表](docs/VERIFICATION.md)
 
-## 当前阶段禁止项
+## English
 
-- 不购买 Thunderbolt 控制器或开始认证。
-- 不开发 HDCP；Overlay 专用链路固定为无 HDCP。
-- 不做自研 HDMI 2.0 主板，先用 ZCU106 和第二路 HDMI FMC 验证。
-- 不把模拟器的 30 fps 浏览器刷新率误认为硬件输出帧率；协议目标始终是 60 Hz。
+Overlay Link Lab is hardware research isolated from the RGB Alpha Splitter runtime. It
+explores carrying FILL and KEY over one HDMI link and using external hardware to generate
+two synchronized HDMI outputs. It is not a runtime feature of the main application and
+has not been validated on physical hardware.
+
+### Current conclusion
+
+The first prototype should investigate HDMI 2.0. The PC packs FILL and KEY side by side
+inside a `3840 x 2160p60 RGB 4:4:4 8-bit` frame. An FPGA uses line buffers to split the
+transport into two `1920 x 1080p60` outputs. A shared pixel clock and timing counter can
+theoretically keep the outputs aligned at frame and line level.
+
+The reference model validates only geometry, timing, and bandwidth relationships. HDMI
+PHY behavior, EDID compatibility, cable errors, output skew, licensing, and production
+switcher compatibility remain untested. These documents are not a production-ready design
+or purchasing specification.
+
+### Scope
+
+- This directory does not modify the main application's inputs, outputs, native module, or compatibility protocol.
+- Software integration should use a separate read-only companion process.
+- HDCP, hardware genlock, SDI interfaces, and a validated production design are out of scope.
+- Thunderbolt/PCIe remains a later research option, not part of the first prototype.
+
+### Directory
+
+```text
+overlay-link-lab/
+  docs/                  Protocol, hardware, implementation, and verification notes
+  protocol/              Machine-readable transport parameters
+  scripts/               Theory and budget checks
+  simulator/             Browser simulator that requires no hardware
+  src/                   Reusable pack/unpack reference model
+  tests/                 Round-trip and error-detection tests
+```
+
+### Local verification
+
+Open `overlay-link-lab/simulator/index.html` directly to use the browser simulator. Run the
+theory and reference-model checks with:
+
+```powershell
+node overlay-link-lab\scripts\verify-theory.js
+node overlay-link-lab\tests\transport-core.test.js
+```
+
+The simulator refresh rate is not a hardware output rate. The protocol target remains 60Hz.
+
+### Documentation
+
+- [Transport protocol](docs/PROTOCOL.md)
+- [Hardware reference](docs/HARDWARE.md)
+- [Implementation process](docs/IMPLEMENTATION.md)
+- [Verification status and acceptance criteria](docs/VERIFICATION.md)

@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("ndiBridge", {
   publishLocalFrameFast: (frame) => ipcRenderer.send("frame:publishLocalFast", frame),
   activateLocalSource: () => ipcRenderer.invoke("source:activateLocal"),
   getAppInfo: () => ipcRenderer.invoke("app:getInfo"),
+  getLocales: () => ipcRenderer.invoke("i18n:getCatalogs"),
   getEngineStatus: () => ipcRenderer.invoke("engine:getStatus"),
   getLogStatus: () => ipcRenderer.invoke("log:getStatus"),
   openLogDirectory: () => ipcRenderer.invoke("log:openDirectory"),

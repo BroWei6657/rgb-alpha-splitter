@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'">
     <title>RGB Alpha Splitter</title>
     <script src="./theme-bootstrap.js"></script>
     <link rel="stylesheet" href="./styles.css">
@@ -12,310 +12,343 @@
     <main class="app">
       <header class="topbar">
         <div class="brand-block">
-          <h1>RGB Alpha Splitter</h1>
-          <p>Full NDI / MOV / Test Pattern 输入，实时拆分 RGB 与 Alpha 输出</p>
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i></span>
+          <div>
+            <h1>RGB Alpha Splitter</h1>
+            <p data-i18n="app.subtitle">实时 Fill / Key 信号拆分与双路输出</p>
+          </div>
         </div>
+
+        <div class="command-center" aria-label="主要操作" data-i18n-aria-label="aria.primaryActions">
+          <button id="testPatternBtn" class="button-secondary" type="button"><span class="button-code" aria-hidden="true">TP</span><span data-i18n="action.testSource">测试源</span></button>
+          <button id="fullscreenBtn" class="button-primary" type="button"><span class="button-code" aria-hidden="true">GO</span><span data-i18n="action.openAllOutputs">全部输出</span></button>
+        </div>
+
         <div class="topbar-controls">
-          <label class="toolbar-field" for="themeMode">主题</label>
-          <select id="themeMode" aria-label="界面主题">
-            <option value="system">跟随系统</option>
-            <option value="light">浅色</option>
-            <option value="dark">深色</option>
-          </select>
-          <button id="toggleDiagnosticsBtn" class="button-quiet" type="button" aria-pressed="true">隐藏诊断</button>
+          <div class="toolbar-group">
+            <label class="toolbar-field" for="languageMode" data-i18n="language.label">语言</label>
+            <select id="languageMode" aria-label="语言" data-i18n-aria-label="language.label">
+              <option value="system">跟随系统</option>
+            </select>
+          </div>
+          <div class="toolbar-group">
+            <label class="toolbar-field" for="themeMode" data-i18n="theme.label">主题</label>
+            <select id="themeMode" aria-label="界面主题" data-i18n-aria-label="theme.label">
+              <option value="system" data-i18n="theme.system">跟随系统</option>
+              <option value="light" data-i18n="theme.light">浅色</option>
+              <option value="dark" data-i18n="theme.dark">深色</option>
+            </select>
+          </div>
         </div>
-        <div class="statusbar" aria-label="运行状态">
-          <span id="bridgeState" class="status-chip">NDI Bridge 检测中</span>
-          <span id="signalState" class="status-chip">信号待机</span>
+
+        <div class="statusbar" aria-label="运行状态" data-i18n-aria-label="aria.runtimeStatus">
+          <span id="bridgeState" class="status-chip" data-i18n="status.bridgeChecking">NDI Bridge 检测中</span>
+          <span id="signalState" class="status-chip" data-i18n="status.signalIdle">信号待机</span>
           <span id="frameRate" class="status-chip">预览 0 fps</span>
-          <span id="engineState" class="status-chip">后端检测中</span>
+          <span id="engineState" class="status-chip" data-i18n="status.backendChecking">后端检测中</span>
           <span id="versionState" class="status-chip status-version">v-</span>
-          <span id="sourceState" class="status-chip">未连接</span>
+          <span id="sourceState" class="status-chip" data-i18n="status.notConnected">未连接</span>
         </div>
       </header>
 
       <section class="workspace">
-        <aside class="sidebar" aria-label="输入源和输出控制">
-          <section class="control-section">
-            <div class="mode-switch" role="group" aria-label="输入模式">
-              <button id="ndiModeBtn" class="active" type="button">NDI 模式</button>
-              <button id="urlModeBtn" type="button">URL 模式</button>
-            </div>
-            <div id="ndiModePanel">
-            <div class="section-head">
-              <h2>输入源</h2>
-              <button id="refreshNdiBtn" class="button-quiet" type="button">刷新 NDI</button>
-            </div>
-            <label class="field">
-              <span>局域网 NDI 源</span>
-              <select id="ndiSourceSelect">
-                <option value="">正在搜索...</option>
-              </select>
-            </label>
-            <div class="button-row">
-              <button id="connectNdiBtn" class="button-primary" type="button">连接 NDI</button>
-              <button id="disconnectBtn" class="button-quiet" type="button">断开</button>
-            </div>
-            <label class="check">
-              <input id="autoReconnect" type="checkbox" checked>
-              <span>断流自动重连</span>
-            </label>
-            <p class="hint" id="ndiHint">未发现可用 NDI Bridge 时，仅可使用测试源和文件输入。</p>
-            </div>
-            <div id="urlModePanel" hidden>
-              <label class="field">
-                <span>网页或媒体 URL</span>
-                <input id="urlInput" type="url" placeholder="https://example.com/overlay" spellcheck="false">
-              </label>
-              <div class="compact-grid">
-                <label class="field">
-                  <span>源 viewport</span>
-                  <select id="urlViewportMode">
-                    <option value="auto">自动</option>
-                    <option value="natural">媒体自然尺寸</option>
-                    <option value="custom">自定义</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>页面状态</span>
-                  <strong id="urlPageType">未载入</strong>
-                </label>
-              </div>
-              <div id="urlViewportCustom" class="compact-grid" hidden>
-                <label class="field"><span>宽度</span><input id="urlViewportWidth" type="number" min="64" max="4096" value="1920"></label>
-                <label class="field"><span>高度</span><input id="urlViewportHeight" type="number" min="64" max="2160" value="1080"></label>
-              </div>
-              <label class="check">
-                <input id="urlTransparent" type="checkbox" checked>
-                <span>强制透明背景</span>
-              </label>
-              <label class="check">
-                <input id="urlAllowLan" type="checkbox">
-                <span>允许访问局域网 URL</span>
-              </label>
-              <div class="button-row">
-                <button id="loadUrlBtn" class="button-primary" type="button">载入 URL</button>
-                <button id="refreshUrlBtn" class="button-quiet" type="button">刷新页面</button>
-                <button id="stopUrlBtn" class="button-danger" type="button">停止</button>
-              </div>
-              <p class="hint" id="urlHint">支持 HTTP/HTTPS 网页、图片和浏览器可播放的视频地址。</p>
-            </div>
-          </section>
+        <nav class="toolrail" role="tablist" aria-label="工作台导航" data-i18n-aria-label="aria.workspaceNavigation">
+          <button id="inspectorTabInput" class="active" type="button" role="tab" aria-selected="true" aria-controls="inspectorInputPanel" data-inspector-tab="input"><b>IN</b><span data-i18n="nav.input">输入</span></button>
+          <button id="inspectorTabSignal" type="button" role="tab" aria-selected="false" aria-controls="inspectorSignalPanel" data-inspector-tab="signal"><b>SIG</b><span data-i18n="nav.signal">信号</span></button>
+          <button id="inspectorTabOutput" type="button" role="tab" aria-selected="false" aria-controls="inspectorOutputPanel" data-inspector-tab="output"><b>OUT</b><span data-i18n="nav.output">输出</span></button>
+          <button id="inspectorTabDiagnostics" type="button" role="tab" aria-selected="false" aria-controls="inspectorDiagnosticsPanel" data-inspector-tab="diagnostics"><b>LOG</b><span data-i18n="nav.diagnostics">诊断</span></button>
+        </nav>
 
-          <section class="control-section">
-            <h2>测试与文件</h2>
-            <button id="testPatternBtn" class="button-secondary" type="button">启动测试源</button>
-            <label class="file-control">
-              <span>MOV / 视频 / 图片</span>
-              <input id="fileInput" type="file" accept=".mov,video/quicktime,video/*,image/*">
-            </label>
-            <p class="hint">MOV 是否可解码取决于系统/Chromium 支持的编码，建议 ProRes 4444 或 H.264 MOV 先测试。</p>
-          </section>
-
-          <section class="control-section">
-            <h2>Alpha 处理</h2>
-            <label class="field inline">
-              <span>增益</span>
-              <input id="alphaGain" type="range" min="0" max="3" value="1" step="0.05">
-              <strong id="alphaGainValue">1.00x</strong>
-            </label>
-            <label class="check">
-              <input id="invertAlpha" type="checkbox">
-              <span>反相 Alpha</span>
-            </label>
-            <label class="check">
-              <input id="showCheckerboard" type="checkbox" checked>
-              <span>输入预览显示透明棋盘</span>
-            </label>
-          </section>
-
-          <section class="control-section">
-            <h2>信号与色彩</h2>
-            <div class="compact-grid color-grid">
-              <label class="field"><span>输出分辨率</span><select id="outputResolution"></select></label>
-              <label class="field"><span>输出帧率</span><select id="outputFrameRate"></select></label>
-              <label class="field"><span>扫描方式</span><select id="scanMode">
-                <option value="progressive">逐行</option>
-                <option value="interlaced-tff">1080i TFF</option>
-                <option value="interlaced-bff">1080i BFF</option>
-              </select></label>
-              <label class="field"><span>显示模式</span><select id="scalingMode">
-                <option value="fit">完整显示留黑</option>
-                <option value="fill">居中裁满</option>
-                <option value="stretch">拉伸铺满</option>
-                <option value="crop">手动裁切</option>
-              </select></label>
-            </div>
-            <div class="compact-grid color-grid">
-              <label class="field">
-                <span>输入色域</span>
-                <select id="sourcePrimaries">
-                  <option value="rec709">Rec.709</option>
-                  <option value="rec2020">Rec.2020 SDR</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>输入范围</span>
-                <select id="sourceRange">
-                  <option value="full">Full</option>
-                  <option value="limited">Limited</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>输出色域</span>
-                <select id="outputPrimaries">
-                  <option value="rec709">Rec.709</option>
-                  <option value="rec2020">Rec.2020 SDR</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>输出范围</span>
-                <select id="outputRange">
-                  <option value="limited" selected>Limited</option>
-                  <option value="full">Full</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>GPU 选择</span>
-                <select id="gpuPreference">
-                  <option value="high-performance" selected>高性能 GPU</option>
-                  <option value="system">系统自动</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>控制页预览</span>
-                <select id="previewPolicy">
-                  <option value="lightweight" selected>轻量 480p / 15fps</option>
-                  <option value="full">完整预览</option>
-                  <option value="paused">暂停预览</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>NDI 同步</span>
-                <select id="syncMode">
-                  <option value="stable" selected>稳定同步</option>
-                  <option value="low-latency">低延迟</option>
-                </select>
-              </label>
-            </div>
-            <div id="customOutputResolution" class="compact-grid" hidden>
-              <label class="field"><span>自定义宽度</span><input id="customOutputWidth" type="number" min="64" max="4096" value="1920"></label>
-              <label class="field"><span>自定义高度</span><input id="customOutputHeight" type="number" min="64" max="2160" value="1080"></label>
-            </div>
-            <div class="button-row">
-              <button id="restoreAutoColorBtn" class="button-quiet" type="button">恢复自动识别</button>
-              <span id="colorDetectionState" class="inline-status">等待输入</span>
-            </div>
-            <div id="cropControls" hidden>
-              <div class="compact-grid crop-grid">
-                <label class="field"><span>左 %</span><input id="cropLeft" type="number" min="0" max="99.9" step="0.1" value="0"></label>
-                <label class="field"><span>上 %</span><input id="cropTop" type="number" min="0" max="99.9" step="0.1" value="0"></label>
-                <label class="field"><span>右 %</span><input id="cropRight" type="number" min="0" max="99.9" step="0.1" value="0"></label>
-                <label class="field"><span>下 %</span><input id="cropBottom" type="number" min="0" max="99.9" step="0.1" value="0"></label>
-              </div>
-              <label class="check"><input id="cropLockAspect" type="checkbox" checked><span>锁定输出宽高比</span></label>
-              <button id="resetCropBtn" type="button">恢复全画面</button>
-            </div>
-            <p class="hint" id="signalHint">默认 Rec.709 Limited SDR，Gamma 2.4。</p>
-          </section>
-
-          <section class="control-section">
-            <h2>全屏输出</h2>
-            <label class="field">
-              <span>RGB 输出显示器</span>
-              <select id="rgbDisplaySelect"></select>
-            </label>
-            <label class="field">
-              <span>Alpha 输出显示器</span>
-              <select id="alphaDisplaySelect"></select>
-            </label>
-            <label class="check">
-              <input id="autoFullscreen" type="checkbox" checked>
-              <span>打开后自动全屏</span>
-            </label>
-            <div class="button-row">
-              <button id="rgbWindowBtn" class="button-secondary" type="button">RGB 输出窗口</button>
-              <button id="alphaWindowBtn" class="button-secondary" type="button">Alpha 输出窗口</button>
-            </div>
-            <div class="button-row">
-              <button id="fullscreenBtn" class="button-primary" type="button">全部输出全屏</button>
-              <button id="snapshotBtn" class="button-quiet" type="button">保存快照</button>
-            </div>
-            <p class="hint">输出进程会直接读取共享帧，并移动到所选显示器。</p>
-          </section>
-
-          <section id="diagnosticsSection" class="control-section">
-            <h2>诊断</h2>
-            <div class="button-row diagnostics-actions">
-              <button id="openLogsBtn" class="button-quiet" type="button">打开日志目录</button>
-              <span id="logPathState" class="inline-status" title=""></span>
-            </div>
-            <dl class="metrics">
-              <div><dt>输入</dt><dd id="metricInput">-</dd></div>
-              <div><dt>分辨率</dt><dd id="metricResolution">-</dd></div>
-              <div><dt>帧时间</dt><dd id="metricFrameTime">-</dd></div>
-              <div><dt>NDI连接</dt><dd id="metricConnections">-</dd></div>
-              <div><dt>接收帧</dt><dd id="metricReceived">-</dd></div>
-              <div><dt>丢弃帧</dt><dd id="metricDropped">-</dd></div>
-              <div><dt>帧队列</dt><dd id="metricQueue">-</dd></div>
-              <div><dt>RGB FPS</dt><dd id="metricRgbOutputFps">0</dd></div>
-              <div><dt>Alpha FPS</dt><dd id="metricAlphaOutputFps">0</dd></div>
-              <div><dt>GPU</dt><dd id="metricGpuAdapter">-</dd></div>
-              <div><dt>GPU队列</dt><dd id="metricGpuQueue">0</dd></div>
-              <div><dt>覆盖帧</dt><dd id="metricGpuOverwritten">0</dd></div>
-              <div><dt>P95帧时间</dt><dd id="metricGpuP95">0 ms</dd></div>
-              <div><dt>重连</dt><dd id="metricReconnects">0</dd></div>
-              <div><dt>同步</dt><dd id="metricSyncMode">-</dd></div>
-              <div><dt>主时钟</dt><dd id="metricClockSource">-</dd></div>
-              <div><dt>时钟抖动</dt><dd id="metricClockJitter">0 us</dd></div>
-              <div><dt>双路偏差</dt><dd id="metricPresentSkew">0 us</dd></div>
-              <div><dt>运行时</dt><dd id="metricRuntime">Browser</dd></div>
-            </dl>
-          </section>
-        </aside>
-
-        <section class="stage" aria-label="实时画面预览">
+        <section class="stage" aria-label="实时画面预览" data-i18n-aria-label="aria.livePreview">
           <article class="panel panel-main monitor-panel">
             <div class="panel-head">
-              <h2>输入预览</h2>
-              <span id="sourceMeta">测试源 960 x 540</span>
+              <div>
+                <span class="panel-index" data-i18n="preview.inputIndex">INPUT 01</span>
+                <h2 data-i18n="preview.inputTitle">输入预览</h2>
+              </div>
+              <span id="sourceMeta" data-i18n="preview.testSourceMeta">测试源 960 x 540</span>
             </div>
             <div class="canvas-wrap checker" id="sourceWrap">
               <canvas id="sourceCanvas" width="960" height="540"></canvas>
               <div id="cropOverlay" class="crop-overlay" hidden><div class="crop-selection" id="cropSelection"></div></div>
+              <span class="preview-corner preview-corner-tl" aria-hidden="true"></span>
+              <span class="preview-corner preview-corner-br" aria-hidden="true"></span>
             </div>
           </article>
 
-          <article class="panel channel-panel channel-rgb">
-            <div class="panel-head">
-              <h2>RGB 输出预览</h2>
-              <span>Alpha 固定为 255</span>
-            </div>
-            <canvas id="rgbCanvas" width="960" height="540"></canvas>
-          </article>
+          <div class="channel-grid">
+            <article class="panel channel-panel channel-rgb">
+              <div class="panel-head">
+                <div><span class="panel-index" data-i18n="preview.rgbIndex">OUTPUT A</span><h2>RGB / Fill</h2></div>
+                <span data-i18n="preview.alphaFixed">Alpha 固定为 255</span>
+              </div>
+              <canvas id="rgbCanvas" width="960" height="540"></canvas>
+            </article>
 
-          <article class="panel channel-panel channel-alpha">
-            <div class="panel-head">
-              <h2>Alpha 输出预览</h2>
-              <span>灰度显示透明度</span>
-            </div>
-            <canvas id="alphaCanvas" width="960" height="540"></canvas>
-          </article>
+            <article class="panel channel-panel channel-alpha">
+              <div class="panel-head">
+                <div><span class="panel-index" data-i18n="preview.alphaIndex">OUTPUT B</span><h2>Alpha / Key</h2></div>
+                <span data-i18n="preview.alphaGrayscale">灰度显示透明度</span>
+              </div>
+              <canvas id="alphaCanvas" width="960" height="540"></canvas>
+            </article>
+          </div>
 
-          <article class="panel log-panel">
-            <div class="panel-head">
-              <h2>事件日志</h2>
-              <button id="clearLogBtn" class="button-quiet" type="button">清空</button>
-            </div>
-            <ol id="eventLog" class="event-log"></ol>
-          </article>
+          <div class="stage-footer" aria-label="输出提示" data-i18n-aria-label="aria.outputHints">
+            <span><i class="stage-led ok" aria-hidden="true"></i><span data-i18n="preview.sharedFrame">RGB 与 Alpha 共用同一源帧</span></span>
+            <span data-i18n="preview.metricsHint">正式帧率以诊断区输出指标为准</span>
+          </div>
         </section>
+
+        <aside class="inspector" aria-label="输入源和输出控制" data-i18n-aria-label="aria.inspector">
+          <div class="inspector-head">
+            <div><span data-i18n="inspector.liveConfig">LIVE CONFIG</span><strong data-i18n="inspector.workspace">工作台 01</strong></div>
+            <span class="inspector-led" aria-hidden="true"></span>
+          </div>
+
+          <div id="inspectorInputPanel" class="inspector-panel-group" role="tabpanel" aria-labelledby="inspectorTabInput" data-inspector-panel="input">
+          <section id="sourceSection" class="control-section">
+            <div class="mode-switch" role="group" aria-label="输入模式" data-i18n-aria-label="aria.inputMode">
+              <button id="ndiModeBtn" class="active" type="button" data-i18n="mode.ndi">NDI 模式</button>
+              <button id="urlModeBtn" type="button" data-i18n="mode.url">URL 模式</button>
+            </div>
+
+            <div id="ndiModePanel">
+              <div class="section-head">
+                <div><span class="section-index">01</span><h2 data-i18n="section.inputSource">输入源</h2></div>
+                <button id="refreshNdiBtn" class="button-quiet" type="button" data-i18n="action.refreshNdi">刷新 NDI</button>
+              </div>
+              <label class="field">
+                <span data-i18n="field.ndiSource">局域网 NDI 源</span>
+                <select id="ndiSourceSelect">
+                  <option value="" data-i18n="option.searching">正在搜索...</option>
+                </select>
+              </label>
+              <div class="button-row">
+                <button id="connectNdiBtn" class="button-primary" type="button" data-i18n="action.connectNdi">连接 NDI</button>
+                <button id="disconnectBtn" class="button-quiet" type="button" data-i18n="action.disconnect">断开</button>
+              </div>
+              <label class="check">
+                <input id="autoReconnect" type="checkbox" checked>
+                <span data-i18n="check.autoReconnect">断流自动重连</span>
+              </label>
+              <p class="hint" id="ndiHint" data-i18n="hint.ndiUnavailable">未发现可用 NDI Bridge 时，仅可使用测试源和文件输入。</p>
+            </div>
+
+            <div id="urlModePanel" hidden>
+              <div class="section-head">
+                <div><span class="section-index">01</span><h2 data-i18n="section.urlInput">URL 输入</h2></div>
+                <span class="inline-status" data-i18n="inline.secureSession">安全会话</span>
+              </div>
+              <label class="field">
+                <span data-i18n="field.webUrl">网页或媒体 URL</span>
+                <input id="urlInput" type="url" placeholder="https://example.com/overlay" spellcheck="false" autocomplete="off">
+              </label>
+              <div class="compact-grid">
+                <label class="field">
+                  <span data-i18n="field.sourceViewport">源 viewport</span>
+                  <select id="urlViewportMode">
+                    <option value="auto" data-i18n="option.viewportAuto">自动</option>
+                    <option value="natural" data-i18n="option.viewportNatural">媒体自然尺寸</option>
+                    <option value="custom" data-i18n="option.custom">自定义</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span data-i18n="field.pageStatus">页面状态</span>
+                  <strong id="urlPageType" data-i18n="option.notLoaded">未载入</strong>
+                </label>
+              </div>
+              <div id="urlViewportCustom" class="compact-grid" hidden>
+                <label class="field"><span data-i18n="field.width">宽度</span><input id="urlViewportWidth" type="number" min="64" max="4096" value="1920"></label>
+                <label class="field"><span data-i18n="field.height">高度</span><input id="urlViewportHeight" type="number" min="64" max="2160" value="1080"></label>
+              </div>
+              <label class="check"><input id="urlTransparent" type="checkbox" checked><span data-i18n="check.transparentBackground">强制透明背景</span></label>
+              <label class="check"><input id="urlAllowLan" type="checkbox"><span data-i18n="check.allowLan">允许访问局域网 URL</span></label>
+              <div class="button-row button-row-three">
+                <button id="loadUrlBtn" class="button-primary" type="button" data-i18n="action.loadUrl">载入 URL</button>
+                <button id="refreshUrlBtn" class="button-quiet" type="button" data-i18n="action.refreshPage">刷新页面</button>
+                <button id="stopUrlBtn" class="button-danger" type="button" data-i18n="action.stop">停止</button>
+              </div>
+              <p class="hint" id="urlHint" data-i18n="hint.urlSupport">支持 HTTP/HTTPS 网页、图片和浏览器可播放的视频地址。</p>
+            </div>
+          </section>
+
+          <section class="control-section utility-section">
+            <div class="section-head">
+              <div><span class="section-index">02</span><h2 data-i18n="section.localMedia">本地媒体</h2></div>
+              <span class="inline-status" data-i18n="inline.compatibilityInput">兼容输入</span>
+            </div>
+            <label class="file-control">
+              <span data-i18n="field.localMedia">MOV / 视频 / 图片</span>
+              <input id="fileInput" type="file" accept=".mov,video/quicktime,video/*,image/*">
+            </label>
+            <p class="hint" data-i18n="hint.movCodec">MOV 解码取决于系统与 Chromium 支持的编码。</p>
+          </section>
+          </div>
+
+          <div id="inspectorSignalPanel" class="inspector-panel-group" role="tabpanel" aria-labelledby="inspectorTabSignal" data-inspector-panel="signal" hidden>
+          <section class="control-section utility-section">
+            <div class="section-head">
+              <div><span class="section-index">01</span><h2 data-i18n="section.alphaProcessing">Alpha 处理</h2></div>
+              <strong id="alphaGainValue" class="inline-value">1.00x</strong>
+            </div>
+            <label class="field range-field">
+              <span data-i18n="field.alphaGain">增益</span>
+              <input id="alphaGain" type="range" min="0" max="3" value="1" step="0.05">
+            </label>
+            <div class="check-grid">
+              <label class="check"><input id="invertAlpha" type="checkbox"><span data-i18n="check.invertAlpha">反相 Alpha</span></label>
+              <label class="check"><input id="showCheckerboard" type="checkbox" checked><span data-i18n="check.checkerboard">透明棋盘</span></label>
+            </div>
+          </section>
+
+          <section id="signalSection" class="control-section">
+            <div class="section-head">
+              <div><span class="section-index">02</span><h2 data-i18n="section.signalColor">信号与色彩</h2></div>
+              <span id="colorDetectionState" class="inline-status" data-i18n="status.waitingInput">等待输入</span>
+            </div>
+
+            <h3 class="subsection-label" data-i18n="section.outputFormat">输出格式</h3>
+            <div class="compact-grid color-grid">
+              <label class="field"><span data-i18n="field.outputResolution">输出分辨率</span><select id="outputResolution"></select></label>
+              <label class="field"><span data-i18n="field.outputFrameRate">输出帧率</span><select id="outputFrameRate"></select></label>
+              <label class="field"><span data-i18n="field.scanMode">扫描方式</span><select id="scanMode">
+                <option value="progressive" data-i18n="option.progressive">逐行</option>
+                <option value="interlaced-tff" data-i18n="option.interlacedTff">1080i TFF</option>
+                <option value="interlaced-bff" data-i18n="option.interlacedBff">1080i BFF</option>
+              </select></label>
+              <label class="field"><span data-i18n="field.scalingMode">显示模式</span><select id="scalingMode">
+                <option value="fit" data-i18n="option.scalingFit">完整显示留黑</option>
+                <option value="fill" data-i18n="option.scalingFill">居中裁满</option>
+                <option value="stretch" data-i18n="option.scalingStretch">拉伸铺满</option>
+                <option value="crop" data-i18n="option.scalingCrop">手动裁切</option>
+              </select></label>
+            </div>
+            <div id="customOutputResolution" class="compact-grid" hidden>
+              <label class="field"><span data-i18n="field.customWidth">自定义宽度</span><input id="customOutputWidth" type="number" min="64" max="4096" value="1920"></label>
+              <label class="field"><span data-i18n="field.customHeight">自定义高度</span><input id="customOutputHeight" type="number" min="64" max="2160" value="1080"></label>
+            </div>
+
+            <h3 class="subsection-label" data-i18n="section.colorManagement">色彩管理</h3>
+            <div class="compact-grid color-grid">
+              <label class="field"><span data-i18n="field.sourcePrimaries">输入色域</span><select id="sourcePrimaries"><option value="rec709">Rec.709</option><option value="rec2020">Rec.2020 SDR</option></select></label>
+              <label class="field"><span data-i18n="field.sourceRange">输入范围</span><select id="sourceRange"><option value="full">Full</option><option value="limited">Limited</option></select></label>
+              <label class="field"><span data-i18n="field.outputPrimaries">输出色域</span><select id="outputPrimaries"><option value="rec709">Rec.709</option><option value="rec2020">Rec.2020 SDR</option></select></label>
+              <label class="field"><span data-i18n="field.outputRange">输出范围</span><select id="outputRange"><option value="limited" selected>Limited</option><option value="full">Full</option></select></label>
+            </div>
+            <div class="button-row auto-color-row">
+              <button id="restoreAutoColorBtn" class="button-quiet" type="button" data-i18n="action.restoreAutoColor">恢复自动识别</button>
+            </div>
+
+            <h3 class="subsection-label" data-i18n="section.enginePolicy">引擎策略</h3>
+            <div class="compact-grid color-grid">
+              <label class="field"><span data-i18n="field.gpuPreference">GPU 选择</span><select id="gpuPreference"><option value="high-performance" selected data-i18n="option.gpuHighPerformance">高性能 GPU</option><option value="system" data-i18n="option.gpuSystem">系统自动</option></select></label>
+              <label class="field"><span data-i18n="field.previewPolicy">控制页预览</span><select id="previewPolicy"><option value="lightweight" selected data-i18n="option.previewLightweight">轻量 480p / 15fps</option><option value="full" data-i18n="option.previewFull">完整预览</option><option value="paused" data-i18n="option.previewPaused">暂停预览</option></select></label>
+              <label class="field field-wide"><span data-i18n="field.ndiSync">NDI 同步</span><select id="syncMode"><option value="stable" selected data-i18n="option.syncStable">稳定同步</option><option value="low-latency" data-i18n="option.syncLowLatency">低延迟</option></select></label>
+            </div>
+
+            <div id="cropControls" class="crop-controls" hidden>
+              <h3 class="subsection-label" data-i18n="section.manualCrop">手动裁切</h3>
+              <div class="compact-grid crop-grid">
+                <label class="field"><span data-i18n="field.cropLeft">左 %</span><input id="cropLeft" type="number" min="0" max="99.9" step="0.1" value="0"></label>
+                <label class="field"><span data-i18n="field.cropTop">上 %</span><input id="cropTop" type="number" min="0" max="99.9" step="0.1" value="0"></label>
+                <label class="field"><span data-i18n="field.cropRight">右 %</span><input id="cropRight" type="number" min="0" max="99.9" step="0.1" value="0"></label>
+                <label class="field"><span data-i18n="field.cropBottom">下 %</span><input id="cropBottom" type="number" min="0" max="99.9" step="0.1" value="0"></label>
+              </div>
+              <label class="check"><input id="cropLockAspect" type="checkbox" checked><span data-i18n="check.lockOutputAspect">锁定输出宽高比</span></label>
+              <button id="resetCropBtn" class="button-quiet" type="button" data-i18n="action.restoreFullFrame">恢复全画面</button>
+            </div>
+            <p class="hint" id="signalHint" data-i18n="hint.signalDefault">默认 Rec.709 Limited SDR，Gamma 2.4。</p>
+          </section>
+          </div>
+
+          <div id="inspectorOutputPanel" class="inspector-panel-group" role="tabpanel" aria-labelledby="inspectorTabOutput" data-inspector-panel="output" hidden>
+          <section id="outputSection" class="control-section">
+            <div class="section-head">
+              <div><span class="section-index">01</span><h2 data-i18n="section.dualOutput">双路输出</h2></div>
+              <span class="inline-status">Fill + Key</span>
+            </div>
+            <label class="field"><span data-i18n="field.rgbDisplay">RGB 输出显示器</span><select id="rgbDisplaySelect"></select></label>
+            <label class="field"><span data-i18n="field.alphaDisplay">Alpha 输出显示器</span><select id="alphaDisplaySelect"></select></label>
+            <label class="check"><input id="autoFullscreen" type="checkbox" checked><span data-i18n="check.autoFullscreen">打开后自动全屏</span></label>
+            <div class="output-pair">
+              <button id="rgbWindowBtn" class="button-secondary" type="button"><span class="output-swatch rgb" aria-hidden="true"></span><span data-i18n="action.rgbWindow">RGB 窗口</span></button>
+              <button id="alphaWindowBtn" class="button-secondary" type="button"><span class="output-swatch alpha" aria-hidden="true"></span><span data-i18n="action.alphaWindow">Alpha 窗口</span></button>
+            </div>
+            <button id="snapshotBtn" class="button-quiet button-block" type="button" data-i18n="action.saveRgbSnapshot">保存 RGB 快照</button>
+            <p class="hint" data-i18n="hint.outputWindows">输出窗口将移动到所选显示器；顶部“全部输出”可同时打开两路全屏。</p>
+          </section>
+          </div>
+
+          <div id="inspectorDiagnosticsPanel" class="inspector-panel-group" role="tabpanel" aria-labelledby="inspectorTabDiagnostics" data-inspector-panel="diagnostics" hidden>
+          <section id="diagnosticsSection" class="control-section diagnostics-section">
+            <div class="section-head">
+              <div><span class="section-index">01</span><h2 data-i18n="section.diagnostics">诊断</h2></div>
+              <button id="openLogsBtn" class="button-quiet" type="button" data-i18n="action.openLogs">打开日志</button>
+            </div>
+            <span id="logPathState" class="inline-status log-path" title=""></span>
+
+            <div class="diagnostic-chart-block">
+              <div class="diagnostic-chart-head">
+                <strong data-i18n="chart.title">60 秒趋势</strong>
+                <span data-i18n="chart.multiSelect">可同时选择多项</span>
+              </div>
+              <div id="diagnosticChartMetric" class="diagnostic-metric-picker" role="group" aria-label="诊断趋势统计内容" data-i18n-aria-label="aria.diagnosticMetrics">
+                <label><input type="checkbox" value="rgbFps" data-diagnostic-metric checked><span>RGB FPS</span></label>
+                <label><input type="checkbox" value="alphaFps" data-diagnostic-metric checked><span>Alpha FPS</span></label>
+                <label><input type="checkbox" value="p95FrameMs" data-diagnostic-metric><span data-i18n="metric.p95Label">P95 帧时间</span></label>
+                <label><input type="checkbox" value="tickJitterUs" data-diagnostic-metric><span data-i18n="metric.clockJitterLabel">时钟抖动</span></label>
+                <label><input type="checkbox" value="presentSkewUs" data-diagnostic-metric><span data-i18n="metric.pairedSkew">双路偏差</span></label>
+                <label><input type="checkbox" value="gpuQueue" data-diagnostic-metric><span data-i18n="metric.gpuQueueLabel">GPU 队列</span></label>
+              </div>
+              <div id="diagnosticChart" class="diagnostic-charts" aria-live="off"></div>
+            </div>
+
+            <h3 class="subsection-label" data-i18n="section.signal">信号</h3>
+            <dl class="metrics">
+              <div><dt data-i18n="metric.input">输入</dt><dd id="metricInput">-</dd></div>
+              <div><dt data-i18n="metric.resolution">分辨率</dt><dd id="metricResolution">-</dd></div>
+              <div><dt data-i18n="metric.frameTime">帧时间</dt><dd id="metricFrameTime">-</dd></div>
+              <div><dt data-i18n="metric.ndiConnections">NDI连接</dt><dd id="metricConnections">-</dd></div>
+              <div><dt data-i18n="metric.receivedFrames">接收帧</dt><dd id="metricReceived">-</dd></div>
+              <div><dt data-i18n="metric.droppedFrames">丢弃帧</dt><dd id="metricDropped">-</dd></div>
+              <div><dt data-i18n="metric.frameQueue">帧队列</dt><dd id="metricQueue">-</dd></div>
+              <div><dt data-i18n="metric.reconnects">重连</dt><dd id="metricReconnects">0</dd></div>
+            </dl>
+
+            <h3 class="subsection-label" data-i18n="section.outputGpu">输出与 GPU</h3>
+            <dl class="metrics">
+              <div><dt>RGB FPS</dt><dd id="metricRgbOutputFps">0</dd></div>
+              <div><dt>Alpha FPS</dt><dd id="metricAlphaOutputFps">0</dd></div>
+              <div><dt>GPU</dt><dd id="metricGpuAdapter">-</dd></div>
+              <div><dt data-i18n="metric.gpuQueue">GPU队列</dt><dd id="metricGpuQueue">0</dd></div>
+              <div><dt data-i18n="metric.overwrittenFrames">覆盖帧</dt><dd id="metricGpuOverwritten">0</dd></div>
+              <div><dt data-i18n="metric.p95FrameTime">P95帧时间</dt><dd id="metricGpuP95">0 ms</dd></div>
+            </dl>
+
+            <h3 class="subsection-label" data-i18n="section.sync">同步</h3>
+            <dl class="metrics">
+              <div><dt data-i18n="metric.sync">同步</dt><dd id="metricSyncMode">-</dd></div>
+              <div><dt data-i18n="metric.masterClock">主时钟</dt><dd id="metricClockSource">-</dd></div>
+              <div><dt data-i18n="metric.clockJitter">时钟抖动</dt><dd id="metricClockJitter">0 us</dd></div>
+              <div><dt data-i18n="metric.pairedSkew">双路偏差</dt><dd id="metricPresentSkew">0 us</dd></div>
+              <div><dt data-i18n="metric.runtime">运行时</dt><dd id="metricRuntime">Browser</dd></div>
+            </dl>
+
+            <div class="event-log-block">
+              <div class="event-log-head"><h3 data-i18n="section.eventLog">事件日志</h3><button id="clearLogBtn" class="button-quiet" type="button" data-i18n="action.clear">清空</button></div>
+              <ol id="eventLog" class="event-log"></ol>
+            </div>
+          </section>
+          </div>
+        </aside>
       </section>
 
       <video id="hiddenVideo" playsinline muted loop></video>
       <img id="hiddenImage" alt="">
     </main>
 
+    <script src="./src/i18n.js"></script>
     <script src="./src/ndi-bridge-client.js"></script>
     <script src="./src/app.js"></script>
   </body>

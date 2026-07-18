@@ -94,6 +94,10 @@
       return invoke("getAppInfo", () => ({ version: "browser", platform: "browser" }));
     },
 
+    async getLocales() {
+      return invoke("getLocales", () => null);
+    },
+
     async getEngineStatus() {
       return invoke("getEngineStatus", () => ({ backend: "browser", gpuAvailable: false }));
     },

@@ -1,8 +1,8 @@
 {
   "name": "rgb-alpha-splitter",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
-  "description": "Full NDI / MOV / test-pattern RGB and alpha splitter.",
+  "description": "GPU-accelerated RGB and Alpha splitter for NDI, URL, local media, and test sources.",
   "author": "RGB Alpha Splitter Project",
   "main": "main.js",
   "scripts": {
@@ -15,7 +15,7 @@
     "serve": "python -m http.server 4173",
     "build:native": "powershell -ExecutionPolicy Bypass -File scripts/build-native.ps1",
     "build:native:mac": "bash scripts/build-native-macos.sh",
-    "check": "node --check main.js && node --check logger.js && node --check theme-bootstrap.js && node --check preload.js && node --check output-preload.js && node --check gpu-output-preload.js && node --check src/ndi-bridge-client.js && node --check src/app.js && node --check src/output.js && node scripts/test-signal.js",
+    "check": "node --check main.js && node --check logger.js && node --check theme-bootstrap.js && node --check preload.js && node --check output-preload.js && node --check gpu-output-preload.js && node --check src/locale-loader.js && node --check src/i18n.js && node --check src/ndi-bridge-client.js && node --check src/app.js && node --check src/output.js && node scripts/test-i18n.js && node scripts/test-signal.js",
     "check:version": "node scripts/check-version.js",
     "dist": "npm run check:version && npm run check && npm run build:native && electron-builder --win nsis",
     "dist:mac": "npm run check:version && npm run check && npm run build:native:mac && electron-builder --mac dmg zip"
@@ -47,6 +47,15 @@
       "src/**/*",
       "native/ndi-node.node",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "locales",
+        "to": "locales",
+        "filter": [
+          "**/*.txt"
+        ]
+      }
     ],
     "directories": {
       "output": "release"

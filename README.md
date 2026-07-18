@@ -2,8 +2,8 @@
 
 [中文](#中文说明) | [English](#english)
 
-当前稳定版本：**1.2.1**
-Current stable version: **1.2.1**
+当前版本：**1.3.0**
+Current version: **1.3.0**
 
 ## 中文说明
 
@@ -22,7 +22,7 @@ RGB Alpha Splitter 是一款面向实时视频制作的桌面工具，可接收 
 [GitHub Releases](https://github.com/BroWei6657/rgb-alpha-splitter/releases)
 下载最新安装包。
 
-1. 下载 `RGB-Alpha-Splitter-Setup-1.2.1.exe`。
+1. 下载 `RGB-Alpha-Splitter-Setup-1.3.0.exe`。
 2. 使用Release页面提供的 `SHA256SUMS.txt` 校验安装包。
 3. 运行安装程序并选择安装目录。
 4. 如果要使用NDI模式，请先安装兼容的 **NDI Runtime**，然后重新启动本程序。
@@ -40,7 +40,7 @@ GitHub Release下载，并在运行前核对SHA-256。
 - [Windows版NDI Runtime v6官方下载](https://ndi.link/NDIRedistV6)
 - [macOS版NDI Runtime v6官方下载](https://ndi.link/NDIRedistV6Apple)
 - [NDI Tools官方下载说明页](https://ndi.video/tools/)（可选，包含其他NDI工具）
-- [DistroAV的NDI Runtime安装说明](https://github.com/DistroAV/DistroAV/wiki/1.-Installation#required-components---ndi-runtime)（第三方参考）
+- [DistroAV的NDI Runtime安装说明](https://github.com/DistroAV/DistroAV/wiki/1.-Installation#required---ndi-runtime)（第三方参考）
 
 安装完成后请重新启动RGB Alpha Splitter。本项目不捆绑或再分发NDI Runtime、NDI Tools或SDK。
 
@@ -64,8 +64,33 @@ GitHub Release下载，并在运行前核对SHA-256。
 - **URL工具：**自然尺寸/自定义viewport、透明背景、冻结提示和手动刷新。
 - **独立输出：**RGB与Alpha窗口可分别选择显示器并全屏，主窗口最小化不应暂停输出。
 - **控制预览：**轻量、完整和暂停三档；独立输出开启后默认优先保证输出性能。
-- **诊断：**实际输出FPS、帧时间、队列、GPU、时钟、连接状态和工程日志。
-- **界面：**跟随系统、浅色和深色主题，可隐藏诊断区并适配窄屏窗口。
+- **诊断：**可多选的60秒并行趋势图、实际输出FPS、帧时间、队列、GPU、时钟、连接状态和事件日志。
+- **界面：**独立的输入、信号、输出和诊断页签，支持简体中文/English切换、跟随系统/浅色/深色主题及窄屏布局。
+- **透明预览：**可切换低对比中性灰棋盘，便于检查输入Alpha而不影响输出。
+
+### 界面语言与TXT语言包
+
+语言选择位于主界面顶部，支持“跟随系统”“简体中文”和“English”，选择会自动保存。
+安装版的语言文件位于：
+
+```text
+<安装目录>\resources\locales\
+  languages.txt
+  zh-CN.txt
+  en-US.txt
+```
+
+开发版使用项目根目录下的 `locales/`。`languages.txt` 按以下格式登记语言：
+
+```text
+zh-CN=简体中文|zh-CN.txt
+en-US=English|en-US.txt
+```
+
+各语言TXT使用 `键=显示文字` 格式。新增语言时，先复制一份现有语言文件并翻译等号右侧，
+保留完整且一致的键集合，再在 `languages.txt` 中登记。语言文件使用UTF-8编码；修改后需
+重新启动程序。安装目录可能需要管理员写入权限，升级安装也可能覆盖自定义语言文件，因此
+修改前应另行备份。无效文件名、重复键、缺失键或超出大小限制的语言包会被拒绝加载。
 
 ### 快速使用
 
@@ -73,8 +98,8 @@ GitHub Release下载，并在运行前核对SHA-256。
 2. NDI模式下刷新源列表、选择发送端并连接；URL模式下输入地址并点击“载入URL”。
 3. 确认输入预览、输入格式、色域和范围。自动识别不正确时再进行手动调整。
 4. 设置输出分辨率、帧率、扫描方式和显示模式。
-5. 分别选择RGB和Alpha目标显示器，打开输出窗口或点击“全部输出全屏”。
-6. 正式制作时以诊断区的 `RGB FPS` 和 `Alpha FPS` 为准；顶部FPS表示控制预览帧率。
+5. 分别选择RGB和Alpha目标显示器，打开输出窗口或点击“全部输出”。
+6. 正式制作时以诊断页的 `RGB FPS` 和 `Alpha FPS` 为准；顶部FPS表示控制预览帧率。
 
 ### 常见问题
 
@@ -189,7 +214,7 @@ not replace a genlocked SDI output card or hardware Fill/Key synchronization.
 Windows 10/11 x64 is the primary validated platform. Download the latest installer from
 [GitHub Releases](https://github.com/BroWei6657/rgb-alpha-splitter/releases).
 
-1. Download `RGB-Alpha-Splitter-Setup-1.2.1.exe`.
+1. Download `RGB-Alpha-Splitter-Setup-1.3.0.exe`.
 2. Verify it with the `SHA256SUMS.txt` file on the Release page.
 3. Run the installer and choose an installation directory.
 4. To use NDI mode, install a compatible **NDI Runtime**, then restart the application.
@@ -208,7 +233,7 @@ unavailable. If you only need to receive NDI, install the Runtime for your platf
 - [Download NDI Runtime v6 for Windows](https://ndi.link/NDIRedistV6)
 - [Download NDI Runtime v6 for macOS](https://ndi.link/NDIRedistV6Apple)
 - [Official NDI Tools download page](https://ndi.video/tools/) (optional additional tools)
-- [DistroAV NDI Runtime installation guide](https://github.com/DistroAV/DistroAV/wiki/1.-Installation#required-components---ndi-runtime) (third-party reference)
+- [DistroAV NDI Runtime installation guide](https://github.com/DistroAV/DistroAV/wiki/1.-Installation#required---ndi-runtime) (third-party reference)
 
 Restart RGB Alpha Splitter after installation. This project does not bundle or redistribute
 the NDI Runtime, NDI Tools, or SDK.
@@ -233,8 +258,36 @@ the NDI Runtime, NDI Tools, or SDK.
 - **URL tools:** natural/custom viewport, transparent background, freeze indication, and manual refresh.
 - **Independent outputs:** separate RGB/Alpha display selection and fullscreen windows; minimizing the control window should not pause output.
 - **Control preview:** lightweight, full, and paused modes, with output performance prioritized while output windows are open.
-- **Diagnostics:** actual output FPS, frame time, queue, GPU, clock, connection state, and engineering logs.
-- **Interface:** system, light, and dark themes, hideable diagnostics, and responsive narrow layouts.
+- **Diagnostics:** multi-select parallel 60-second charts, actual output FPS, frame time, queue, GPU, clock, connection state, and event logs.
+- **Interface:** dedicated Input, Signal, Output, and Diagnostics tabs with Simplified Chinese/English selection, system/light/dark themes, and responsive narrow layouts.
+- **Transparency preview:** a low-contrast neutral checkerboard for inspecting input Alpha without affecting output.
+
+### Interface language and TXT locale packs
+
+The language selector is in the top bar. Follow System, Simplified Chinese, and English
+are included, and the selection is persisted. Installed locale files are stored in:
+
+```text
+<installation directory>\resources\locales\
+  languages.txt
+  zh-CN.txt
+  en-US.txt
+```
+
+Development builds use `locales/` in the project root. Register languages in
+`languages.txt` using this format:
+
+```text
+zh-CN=简体中文|zh-CN.txt
+en-US=English|en-US.txt
+```
+
+Each locale TXT uses `key=display text`. To add a language, copy an existing catalog,
+translate the text after each equals sign while preserving the complete key set, and
+register it in `languages.txt`. Files must use UTF-8 and are reloaded after an application
+restart. Editing the installation directory may require administrator permission, and an
+upgrade may replace custom locale files, so back them up first. Unsafe file names, duplicate
+or missing keys, and oversized catalogs are rejected.
 
 ### Quick start
 
@@ -242,8 +295,8 @@ the NDI Runtime, NDI Tools, or SDK.
 2. In NDI mode, refresh sources, select the sender, and connect. In URL mode, enter the address and select Load URL.
 3. Confirm the input preview and detected format, gamut, and range. Override them only when detection is wrong.
 4. Configure output resolution, frame rate, scan mode, and scaling.
-5. Select the RGB and Alpha displays, then open the windows or choose Fullscreen All Outputs.
-6. During production, use `RGB FPS` and `Alpha FPS` in Diagnostics. The top FPS value is the control-preview rate.
+5. Select the RGB and Alpha displays, then open the windows or choose All Outputs.
+6. During production, use `RGB FPS` and `Alpha FPS` on the Diagnostics tab. The top FPS value is the control-preview rate.
 
 ### Troubleshooting
 
