@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld("ndiBridge", {
   getUrlStatus: () => ipcRenderer.invoke("url:getStatus"),
   refreshUrl: () => ipcRenderer.invoke("url:refresh"),
   setUrlViewport: (viewport) => ipcRenderer.invoke("url:setViewport", viewport),
+  setUrlInteraction: (enabled) => ipcRenderer.invoke("url:setInteraction", enabled),
+  setUrlTransparent: (enabled) => ipcRenderer.invoke("url:setTransparent", enabled),
+  sendUrlInput: (input) => ipcRenderer.send("url:input", input),
   onUrlStatus: (callback) => ipcRenderer.on("url:status", (_event, status) => callback(status)),
   onClockTick: (callback) => {
     ipcRenderer.on("clock:tick", () => {

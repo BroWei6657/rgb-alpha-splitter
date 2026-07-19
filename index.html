@@ -69,8 +69,8 @@
               <span id="sourceMeta" data-i18n="preview.testSourceMeta">测试源 960 x 540</span>
             </div>
             <div class="canvas-wrap checker" id="sourceWrap">
-              <canvas id="sourceCanvas" width="960" height="540"></canvas>
-              <div id="cropOverlay" class="crop-overlay" hidden><div class="crop-selection" id="cropSelection"></div></div>
+              <canvas id="sourceCanvas" width="960" height="540" tabindex="0" data-i18n-aria-label="aria.urlInteractionPreview" aria-label="输入预览"></canvas>
+              <div id="cropOverlay" class="crop-overlay" hidden><div class="crop-selection" id="cropSelection"><button id="cropLockBtn" class="crop-lock-button" type="button" aria-pressed="false" aria-label="锁定裁切" title="锁定裁切" data-i18n-aria-label="action.lockCropHint" data-i18n-title="action.lockCropHint"><span class="lock-glyph" aria-hidden="true"></span></button></div></div>
               <span class="preview-corner preview-corner-tl" aria-hidden="true"></span>
               <span class="preview-corner preview-corner-br" aria-hidden="true"></span>
             </div>
@@ -168,6 +168,7 @@
                 <button id="loadUrlBtn" class="button-primary" type="button" data-i18n="action.loadUrl">载入 URL</button>
                 <button id="refreshUrlBtn" class="button-quiet" type="button" data-i18n="action.refreshPage">刷新页面</button>
                 <button id="stopUrlBtn" class="button-danger" type="button" data-i18n="action.stop">停止</button>
+                <button id="urlInteractionBtn" class="button-quiet" type="button" data-i18n="action.urlInteraction" data-i18n-title="action.urlInteractionHint" disabled>网页交互</button>
               </div>
               <p class="hint" id="urlHint" data-i18n="hint.urlSupport">支持 HTTP/HTTPS 网页、图片和浏览器可播放的视频地址。</p>
             </div>
@@ -256,7 +257,9 @@
                 <label class="field"><span data-i18n="field.cropBottom">下 %</span><input id="cropBottom" type="number" min="0" max="99.9" step="0.1" value="0"></label>
               </div>
               <label class="check"><input id="cropLockAspect" type="checkbox" checked><span data-i18n="check.lockOutputAspect">锁定输出宽高比</span></label>
-              <button id="resetCropBtn" class="button-quiet" type="button" data-i18n="action.restoreFullFrame">恢复全画面</button>
+              <div class="button-row crop-actions">
+                <button id="resetCropBtn" class="button-quiet" type="button" data-i18n="action.restoreFullFrame">恢复全画面</button>
+              </div>
             </div>
             <p class="hint" id="signalHint" data-i18n="hint.signalDefault">默认 Rec.709 Limited SDR，Gamma 2.4。</p>
           </section>

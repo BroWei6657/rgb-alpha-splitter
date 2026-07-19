@@ -34,6 +34,7 @@
     loadUrlBtn: document.getElementById("loadUrlBtn"),
     refreshUrlBtn: document.getElementById("refreshUrlBtn"),
     stopUrlBtn: document.getElementById("stopUrlBtn"),
+    urlInteractionBtn: document.getElementById("urlInteractionBtn"),
     urlHint: document.getElementById("urlHint"),
     ndiHint: document.getElementById("ndiHint"),
     refreshNdiBtn: document.getElementById("refreshNdiBtn"),
@@ -107,6 +108,7 @@
     ,cropRight: document.getElementById("cropRight")
     ,cropBottom: document.getElementById("cropBottom")
     ,cropLockAspect: document.getElementById("cropLockAspect")
+    ,cropLockBtn: document.getElementById("cropLockBtn")
     ,resetCropBtn: document.getElementById("resetCropBtn")
     ,cropOverlay: document.getElementById("cropOverlay")
     ,cropSelection: document.getElementById("cropSelection")
@@ -307,6 +309,10 @@
     lastLocalSourceAt: -1000,
     lastPreviewRenderAt: -1000
     ,localGeneration: 0
+    ,urlInteraction: false
+    ,urlCursor: "default"
+    ,urlActive: false
+    ,cropLocked: false
     ,signalConfig: { sourcePrimaries: "rec709", sourceRange: "full", outputPrimaries: "rec709", outputRange: "limited",
       outputResolution: "1920x1080", outputFrameRate: "30", scanSelection: "progressive", scalingMode: "fit",
       cropRect: { x: 0, y: 0, width: 1, height: 1 }, gpuPreference: "high-performance",
@@ -517,8 +523,10 @@
 
   function setMode(mode, label) {
     state.mode = mode;
+    if (mode !== "url") state.urlActive = false;
     setPill(elements.sourceState, label, mode === "ndi" || mode === "url" ? "ok" : "warn");
     elements.metricInput.textContent = label;
+    updateUrlInteractionAvailability();
   }
 
   function setInputMode(mode) {
@@ -528,6 +536,63 @@
     elements.ndiModeBtn.classList.toggle("active", !urlMode);
     elements.urlModeBtn.classList.toggle("active", urlMode);
     localStorage.setItem("inputMode", mode);
+    if (!urlMode) setUrlInteractionMode(false, false).catch(() => {});
+    updateUrlInteractionAvailability();
+  }
+
+  function normalizeUrlInput(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return raw;
+    if (/^https?:\/\//i.test(raw) || /^data:/i.test(raw)) return raw;
+    if (/^\/\//.test(raw)) return `https:${raw}`;
+    if (/^[a-z][a-z\d+.-]*:\/\//i.test(raw)) return raw;
+    return `https://${raw}`;
+  }
+
+  function urlInteractionReady() {
+    const cropRequiresLock = state.signalConfig.scalingMode === "crop";
+    return state.mode === "url" && state.urlActive && (!cropRequiresLock || state.cropLocked);
+  }
+
+  const URL_CURSOR_TYPES = new Set([
+    "default", "pointer", "crosshair", "text", "wait", "help", "e-resize", "n-resize", "ne-resize",
+    "nw-resize", "s-resize", "se-resize", "sw-resize", "w-resize", "ns-resize", "ew-resize",
+    "nesw-resize", "nwse-resize", "col-resize", "row-resize", "move", "vertical-text", "cell",
+    "context-menu", "alias", "progress", "no-drop", "copy", "none", "not-allowed", "zoom-in",
+    "zoom-out", "grab", "grabbing", "all-scroll"
+  ]);
+
+  function updateUrlCursor(cursor = state.urlCursor) {
+    state.urlCursor = URL_CURSOR_TYPES.has(cursor) ? cursor : "default";
+    elements.sourceCanvas.style.cursor = state.urlInteraction && urlInteractionReady() ? state.urlCursor : "";
+  }
+
+  function updateUrlInteractionAvailability() {
+    if (!elements.urlInteractionBtn) return;
+    const available = urlInteractionReady();
+    elements.urlInteractionBtn.disabled = !available;
+    elements.sourceCanvas.classList.toggle("url-interactive", state.urlInteraction && available);
+    updateUrlCursor();
+    elements.cropOverlay.classList.toggle("crop-locked", state.cropLocked);
+    if (!available && state.urlInteraction) setUrlInteractionMode(false, false).catch(() => {});
+  }
+
+  async function setUrlInteractionMode(enabled, notify = true) {
+    const available = urlInteractionReady();
+    const next = Boolean(enabled && available);
+    if (next === state.urlInteraction && !enabled) {
+      updateUrlInteractionAvailability();
+      return false;
+    }
+    const accepted = next ? await window.ndiClient.setUrlInteraction(true) : await window.ndiClient.setUrlInteraction(false);
+    state.urlInteraction = next && accepted !== false;
+    elements.urlInteractionBtn.disabled = !available;
+    elements.urlInteractionBtn.setAttribute("aria-pressed", String(state.urlInteraction));
+    elements.urlInteractionBtn.classList.toggle("active", state.urlInteraction);
+    elements.sourceCanvas.classList.toggle("url-interactive", state.urlInteraction);
+    updateUrlCursor(state.urlInteraction ? state.urlCursor : "default");
+    if (notify) log(t(state.urlInteraction ? "log.urlInteractionOn" : "log.urlInteractionOff"));
+    return state.urlInteraction;
   }
 
   async function stopUrlSource(switchToTest = false) {
@@ -536,11 +601,12 @@
   }
 
   async function startUrlSource() {
-    const url = elements.urlInput.value.trim();
+    const url = normalizeUrlInput(elements.urlInput.value);
     if (!url) {
       log(t("log.enterUrl"), "warn");
       return;
     }
+    elements.urlInput.value = url;
     const viewportMode = elements.urlViewportMode.value;
     const width = viewportMode === "custom" ? Number(elements.urlViewportWidth.value) : Number(state.signalConfig.outputWidth || 1920);
     const height = viewportMode === "custom" ? Number(elements.urlViewportHeight.value) : Number(state.signalConfig.outputHeight || 1080);
@@ -565,7 +631,9 @@
       state.ndiHasFrame = false;
       state.placeholderDrawn = true;
       resizePipeline(width, height);
+      state.urlActive = false;
       setMode("url", url);
+      await setUrlInteractionMode(false, false);
       setPill(elements.signalState, t("status.urlLoading"), "warn");
       state.currentSourceKey = `url:${url}`;
       elements.sourceMeta.textContent = `${width} x ${height} · ${Number(status.fps || 30).toFixed(2)} fps`;
@@ -581,6 +649,18 @@
 
   function handleUrlStatus(status) {
     if (!status) return;
+    if (state.mode === "url") state.urlActive = status.active === true && status.state === "running";
+    if (typeof status.transparentBackground === "boolean" && state.mode === "url") {
+      elements.urlTransparent.checked = status.transparentBackground;
+    }
+    if (status.interactive === false && state.urlInteraction) {
+      state.urlInteraction = false;
+      state.urlCursor = "default";
+      elements.urlInteractionBtn.classList.remove("active");
+      elements.urlInteractionBtn.setAttribute("aria-pressed", "false");
+      updateUrlCursor();
+    }
+    if (typeof status.cursor === "string") updateUrlCursor(status.cursor);
     if (status.state === "running" && state.mode === "url") {
       setPill(elements.signalState, t("status.urlNormal"), "ok");
       elements.urlHint.textContent = t("status.urlContent", { fps: Number(status.actualFps || 0).toFixed(0) });
@@ -592,10 +672,14 @@
         }
       }
       if (status.detectedSignal) applyDetectedSignal(status.detectedSignal);
+      updateUrlInteractionAvailability();
     } else if (status.state === "frozen" && state.mode === "url") {
+      state.urlActive = true;
       setPill(elements.signalState, t("status.urlFrozen"), "error");
       elements.urlHint.textContent = t("status.urlFrozenHint", { seconds: Math.max(1, Math.round(Number(status.frozenMs || 0) / 1000)) });
     } else if (status.state === "error") {
+      state.urlActive = false;
+      setUrlInteractionMode(false, false).catch(() => {});
       setPill(elements.signalState, t("status.urlError"), "error");
       elements.urlHint.textContent = status.error || t("status.urlRenderError");
       log(t("log.urlRenderFailed", { message: elements.urlHint.textContent }), "error");
@@ -629,6 +713,7 @@
     const inputMode = localStorage.getItem("inputMode");
     const urlInput = localStorage.getItem("urlInput");
     const urlAllowLan = localStorage.getItem("urlAllowLan");
+    const urlTransparent = localStorage.getItem("urlTransparent");
     const themeMode = localStorage.getItem("themeMode") || "system";
     const inspectorPanel = localStorage.getItem("inspectorPanel") || "input";
     let diagnosticChartMetrics;
@@ -648,6 +733,7 @@
     if (autoFullscreen !== null) elements.autoFullscreen.checked = autoFullscreen === "true";
     if (urlInput) elements.urlInput.value = urlInput;
     if (urlAllowLan !== null) elements.urlAllowLan.checked = urlAllowLan === "true";
+    if (urlTransparent !== null) elements.urlTransparent.checked = urlTransparent === "true";
     applyTheme(themeMode);
     for (const input of elements.diagnosticMetricInputs) input.checked = diagnosticChartMetrics.includes(input.value);
     setActiveInspectorPanel(inspectorPanel, false);
@@ -1070,7 +1156,10 @@
     const cropEnabled = state.signalConfig.scalingMode === "crop";
     elements.cropControls.hidden = !cropEnabled;
     elements.cropOverlay.hidden = !cropEnabled;
+    if (!cropEnabled) setCropLocked(false, false);
+    else setCropLocked(state.cropLocked, false);
     renderCropOverlay();
+    updateUrlInteractionAvailability();
     state.frameDirty = true;
   }
 
@@ -1152,7 +1241,27 @@
     updateSignalConfig().catch((error) => log(t("log.autoSignalFailed", { message: error.message }), "error"));
   }
 
+  function setCropLocked(locked, notify = true) {
+    const next = Boolean(locked) && state.signalConfig.scalingMode === "crop";
+    state.cropLocked = next;
+    for (const input of [elements.cropLeft, elements.cropTop, elements.cropRight, elements.cropBottom]) input.disabled = next;
+    elements.resetCropBtn.disabled = next;
+    const lockLabelKey = next ? "action.unlockCropHint" : "action.lockCropHint";
+    elements.cropLockBtn.dataset.i18nAriaLabel = lockLabelKey;
+    elements.cropLockBtn.dataset.i18nTitle = lockLabelKey;
+    elements.cropLockBtn.setAttribute("aria-label", t(lockLabelKey));
+    elements.cropLockBtn.setAttribute("title", t(lockLabelKey));
+    elements.cropLockBtn.setAttribute("aria-pressed", String(next));
+    elements.cropLockBtn.classList.toggle("active", next);
+    elements.cropLockBtn.classList.toggle("is-locked", next);
+    elements.cropOverlay.classList.toggle("crop-locked", next);
+    if (!next && state.urlInteraction) setUrlInteractionMode(false, false).catch(() => {});
+    updateUrlInteractionAvailability();
+    if (notify) log(t(next ? "log.cropLocked" : "log.cropUnlocked"));
+  }
+
   function cropFromInputs() {
+    if (state.cropLocked) return;
     const left = Math.min(99.9, Math.max(0, Number(elements.cropLeft.value) || 0)) / 100;
     const top = Math.min(99.9, Math.max(0, Number(elements.cropTop.value) || 0)) / 100;
     const right = Math.min(99.9, Math.max(0, Number(elements.cropRight.value) || 0)) / 100;
@@ -1187,7 +1296,11 @@
     let drag = null;
     const sizeLabel = document.createElement("span");
     sizeLabel.className = "crop-size-label";
-    elements.cropSelection.append(sizeLabel);
+    const cropTools = document.createElement("span");
+    cropTools.className = "crop-tools";
+    cropTools.append(sizeLabel, elements.cropLockBtn);
+    elements.cropSelection.append(cropTools);
+    elements.cropLockBtn.addEventListener("pointerdown", (event) => event.stopPropagation());
     for (const handle of ["n", "ne", "e", "se", "s", "sw", "w", "nw"]) {
       const node = document.createElement("span");
       node.className = "crop-handle";
@@ -1201,6 +1314,7 @@
         y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height)) };
     };
     elements.cropOverlay.addEventListener("pointerdown", (event) => {
+      if (state.cropLocked) return;
       const start = position(event);
       const rect = { ...state.signalConfig.cropRect };
       const handleNode = event.target.closest && event.target.closest(".crop-handle");
@@ -1291,6 +1405,118 @@
     };
     elements.cropOverlay.addEventListener("pointerup", finish);
     elements.cropOverlay.addEventListener("pointercancel", finish);
+  }
+
+  function interactionModifiers(event) {
+    const modifiers = [];
+    if (event.altKey) modifiers.push("alt");
+    if (event.ctrlKey) modifiers.push("control");
+    if (event.shiftKey) modifiers.push("shift");
+    if (event.metaKey) modifiers.push("command");
+    return modifiers;
+  }
+
+  function interactionPoint(event) {
+    const bounds = elements.sourceCanvas.getBoundingClientRect();
+    const width = Math.max(1, bounds.width);
+    const height = Math.max(1, bounds.height);
+    return {
+      x: Math.min(Math.max(0, Math.round((event.clientX - bounds.left) * elements.sourceCanvas.width / width)), elements.sourceCanvas.width - 1),
+      y: Math.min(Math.max(0, Math.round((event.clientY - bounds.top) * elements.sourceCanvas.height / height)), elements.sourceCanvas.height - 1)
+    };
+  }
+
+  function forwardUrlInput(event, type, button) {
+    if (!state.urlInteraction || !urlInteractionReady()) return false;
+    if (button !== undefined && button !== 0) return false;
+    if (type === "mouseMove" && (Number(event.buttons) & ~1)) return false;
+    const point = interactionPoint(event);
+    window.ndiClient.sendUrlInput({ type, ...point, button: "left", buttons: event.buttons, modifiers: interactionModifiers(event) });
+    return true;
+  }
+
+  function bindUrlInteraction() {
+    let queuedMove = null;
+    let moveFrame = 0;
+    const flushQueuedMove = () => {
+      if (moveFrame) {
+        cancelAnimationFrame(moveFrame);
+        moveFrame = 0;
+      }
+      const move = queuedMove;
+      queuedMove = null;
+      if (move) forwardUrlInput(move, "mouseMove");
+    };
+    elements.sourceCanvas.addEventListener("pointermove", (event) => {
+      if (!state.urlInteraction || !urlInteractionReady()) return;
+      if (Number(event.buttons) & ~1) {
+        event.preventDefault();
+        return;
+      }
+      queuedMove = {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        buttons: event.buttons,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        metaKey: event.metaKey
+      };
+      if (!moveFrame) moveFrame = requestAnimationFrame(() => {
+        moveFrame = 0;
+        const move = queuedMove;
+        queuedMove = null;
+        if (move) forwardUrlInput(move, "mouseMove");
+      });
+      event.preventDefault();
+    });
+    elements.sourceCanvas.addEventListener("pointerdown", (event) => {
+      flushQueuedMove();
+      if (!forwardUrlInput(event, "mouseDown", event.button)) {
+        if (state.urlInteraction && urlInteractionReady() && event.button !== 0) event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+      elements.sourceCanvas.setPointerCapture(event.pointerId);
+      elements.sourceCanvas.focus({ preventScroll: true });
+    });
+    elements.sourceCanvas.addEventListener("pointerup", (event) => {
+      flushQueuedMove();
+      if (forwardUrlInput(event, "mouseUp", event.button)) event.preventDefault();
+      else if (state.urlInteraction && urlInteractionReady() && event.button !== 0) event.preventDefault();
+      if (elements.sourceCanvas.hasPointerCapture(event.pointerId)) elements.sourceCanvas.releasePointerCapture(event.pointerId);
+    });
+    elements.sourceCanvas.addEventListener("contextmenu", (event) => {
+      if (state.urlInteraction) event.preventDefault();
+    });
+    elements.sourceCanvas.addEventListener("wheel", (event) => {
+      if (!state.urlInteraction || !urlInteractionReady()) return;
+      const point = interactionPoint(event);
+      window.ndiClient.sendUrlInput({
+        type: "mouseWheel",
+        ...point,
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        deltaZ: event.deltaZ,
+        deltaMode: event.deltaMode,
+        modifiers: interactionModifiers(event)
+      });
+      event.preventDefault();
+    }, { passive: false });
+    elements.sourceCanvas.addEventListener("keydown", (event) => {
+      if (!state.urlInteraction || !urlInteractionReady()) return;
+      const modifiers = interactionModifiers(event);
+      window.ndiClient.sendUrlInput({ type: "keyDown", key: event.key, code: event.code, modifiers });
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
+        window.ndiClient.sendUrlInput({ type: "char", key: event.key, code: event.code, modifiers });
+      }
+      event.preventDefault();
+    });
+    elements.sourceCanvas.addEventListener("keyup", (event) => {
+      if (!state.urlInteraction || !urlInteractionReady()) return;
+      window.ndiClient.sendUrlInput({ type: "keyUp", key: event.key, code: event.code, modifiers: interactionModifiers(event) });
+      event.preventDefault();
+    });
   }
 
   async function initializeSystemInfo() {
@@ -1454,6 +1680,7 @@
     }
     renderDetectionState();
     renderSignalHint();
+    setCropLocked(state.cropLocked, false);
     if (state.mode === "test") {
       setMode("test", t("source.test"));
       setPill(elements.signalState, t("status.localSignal"), "ok");
@@ -1527,7 +1754,16 @@
       localStorage.setItem("urlAllowLan", String(elements.urlAllowLan.checked));
       log(t("log.lanAccess", { value: toggleStateLabel(elements.urlAllowLan.checked) }));
     });
-    elements.urlTransparent.addEventListener("change", () => {
+    elements.urlTransparent.addEventListener("change", async () => {
+      localStorage.setItem("urlTransparent", String(elements.urlTransparent.checked));
+      if (state.mode === "url" && state.urlActive) {
+        try {
+          const applied = await window.ndiClient.setUrlTransparent(elements.urlTransparent.checked);
+          if (!applied) log(t("log.transparentBackgroundFailed", { message: t("status.urlRenderError") }), "error");
+        } catch (error) {
+          log(t("log.transparentBackgroundFailed", { message: error.message }), "error");
+        }
+      }
       log(t("log.transparentBackground", { value: toggleStateLabel(elements.urlTransparent.checked) }));
     });
     elements.loadUrlBtn.addEventListener("click", startUrlSource);
@@ -1536,6 +1772,13 @@
       if (refreshed) log(t("log.urlRefreshed"));
     });
     elements.stopUrlBtn.addEventListener("click", () => stopUrlSource(true));
+    elements.urlInteractionBtn.addEventListener("click", async () => {
+      try {
+        await setUrlInteractionMode(!state.urlInteraction);
+      } catch (error) {
+        log(t("log.urlInteractionFailed", { message: error.message }), "error");
+      }
+    });
     elements.urlViewportMode.addEventListener("change", () => {
       elements.urlViewportCustom.hidden = elements.urlViewportMode.value !== "custom";
       log(t("log.viewportMode", { value: controlValueLabel(elements.urlViewportMode) }));
@@ -1547,6 +1790,7 @@
           const height = Number(elements.urlViewportHeight.value);
           try {
             await window.ndiClient.setUrlViewport({ mode: "custom", width, height });
+            resizePipeline(width, height);
             log(t("log.viewportUpdated", { width, height }));
           } catch (error) {
             log(t("log.viewportFailed", { message: error.message }), "error");
@@ -1618,14 +1862,17 @@
       });
     }
     elements.resetCropBtn.addEventListener("click", () => {
+      if (state.cropLocked) return;
       state.signalConfig.cropRect = { x: 0, y: 0, width: 1, height: 1 };
       renderCropOverlay();
       updateSignalConfig()
         .then(() => log(t("log.cropRestored")))
         .catch((error) => log(t("log.cropFailed", { message: error.message }), "error"));
     });
+    elements.cropLockBtn.addEventListener("click", () => setCropLocked(!state.cropLocked));
     elements.cropLockAspect.addEventListener("change", () => log(t("log.cropAspect", { value: toggleStateLabel(elements.cropLockAspect.checked) })));
     bindCropEditor();
+    bindUrlInteraction();
     elements.refreshNdiBtn.addEventListener("click", refreshNdiSources);
     elements.connectNdiBtn.addEventListener("click", connectNdi);
     elements.disconnectBtn.addEventListener("click", disconnectInput);

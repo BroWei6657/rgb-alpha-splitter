@@ -159,6 +159,12 @@ button.button-quiet {
   background: transparent;
 }
 
+button.button-quiet.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
 button.button-danger {
   border-color: color-mix(in srgb, var(--danger) 55%, var(--line));
   background: transparent;
@@ -171,7 +177,8 @@ button.button-danger:hover:not(:disabled) {
 }
 
 button:disabled,
-select:disabled {
+select:disabled,
+input:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
@@ -767,6 +774,18 @@ html[lang^="en"] .color-grid .field:has(#scalingMode) {
   padding-inline: 7px;
 }
 
+.button-row-three {
+  flex-wrap: wrap;
+}
+
+.button-row-three button {
+  flex: 1 1 112px;
+}
+
+.crop-actions button {
+  flex: 0 1 auto;
+}
+
 .auto-color-row button {
   flex: 0 1 auto;
 }
@@ -1036,6 +1055,27 @@ html[lang^="en"] .color-grid .field:has(#scalingMode) {
   background: rgba(0, 0, 0, 0.38);
 }
 
+.crop-overlay.crop-locked {
+  pointer-events: none;
+}
+
+.crop-overlay.crop-locked .crop-lock-button {
+  pointer-events: auto;
+}
+
+#sourceCanvas {
+  outline: none;
+}
+
+#sourceCanvas.url-interactive {
+  cursor: default;
+}
+
+#sourceCanvas.url-interactive:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .crop-selection {
   position: absolute;
   border: 2px solid var(--accent);
@@ -1064,20 +1104,75 @@ html[lang^="en"] .color-grid .field:has(#scalingMode) {
 .crop-handle[data-handle="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
 .crop-handle[data-handle="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
 
-.crop-size-label {
+.crop-tools {
   position: absolute;
   left: 50%;
   top: 8px;
-  z-index: 1;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   max-width: calc(100% - 12px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.crop-size-label {
+  max-width: calc(100% - 24px);
   padding: 3px 6px;
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.74);
   color: #fff;
   font: 12px/1.2 Consolas, monospace;
-  pointer-events: none;
-  transform: translateX(-50%);
   white-space: nowrap;
+}
+
+.crop-lock-button {
+  display: inline-grid;
+  flex: 0 0 24px;
+  place-items: center;
+  width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.74);
+  color: #fff;
+  pointer-events: auto;
+}
+
+.crop-lock-button:hover:not(:disabled),
+.crop-lock-button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.lock-glyph {
+  position: relative;
+  display: block;
+  width: 10px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+
+.lock-glyph::before {
+  position: absolute;
+  left: 2px;
+  top: -7px;
+  width: 5px;
+  height: 7px;
+  border: 1.5px solid currentColor;
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  content: "";
+}
+
+.crop-lock-button:not(.is-locked) .lock-glyph::before {
+  left: 4px;
+  top: -6px;
+  transform: rotate(-34deg);
+  transform-origin: left bottom;
 }
 
 #hiddenVideo,

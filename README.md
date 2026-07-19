@@ -2,8 +2,8 @@
 
 [中文](#中文说明) | [English](#english)
 
-当前版本：**1.3.0**
-Current version: **1.3.0**
+当前版本：**1.3.1**
+Current version: **1.3.1**
 
 ## 中文说明
 
@@ -22,7 +22,7 @@ RGB Alpha Splitter 是一款面向实时视频制作的桌面工具，可接收 
 [GitHub Releases](https://github.com/BroWei6657/rgb-alpha-splitter/releases)
 下载最新安装包。
 
-1. 下载 `RGB-Alpha-Splitter-Setup-1.3.0.exe`。
+1. 下载 `RGB-Alpha-Splitter-Setup-1.3.1.exe`。
 2. 使用Release页面提供的 `SHA256SUMS.txt` 校验安装包。
 3. 运行安装程序并选择安装目录。
 4. 如果要使用NDI模式，请先安装兼容的 **NDI Runtime**，然后重新启动本程序。
@@ -60,8 +60,8 @@ GitHub Release下载，并在运行前核对SHA-256。
 - **Windows GPU优先：** D3D11原生双输出，失败时自动切换兼容后端。
 - **信号与色彩：** Rec.709/Rec.2020 SDR、Full/Limited、常用HD/UHD分辨率、
   分数帧率和1080i TFF/BFF输入处理。
-- **画面适配：** 完整显示留黑、居中裁满、拉伸和八方向手动裁切。
-- **URL工具：** 自然尺寸/自定义viewport、透明背景、冻结提示和手动刷新。
+- **画面适配：** 完整显示留黑、居中裁满、拉伸和八方向手动裁切；裁切分辨率旁的小锁提示可防止误触改变区域。
+- **URL工具：** 自然尺寸/自定义viewport、可即时切换的透明背景、冻结提示、手动刷新和网页交互；网页组件使用原生行为，光标跟随内容，支持左键、滚轮、键盘和复制粘贴快捷键，右键与中键不会转发。
 - **独立输出：** RGB与Alpha窗口可分别选择显示器并全屏，主窗口最小化不应暂停输出。
 - **控制预览：** 轻量、完整和暂停三档；独立输出开启后默认优先保证输出性能。
 - **诊断：** 可多选的60秒并行趋势图、实际输出FPS、帧时间、队列、GPU、时钟、连接状态和事件日志。
@@ -95,9 +95,9 @@ en-US=English|en-US.txt
 ### 快速使用
 
 1. 启动程序，选择“NDI模式”或“URL模式”；也可以载入本地文件或启动测试源。
-2. NDI模式下刷新源列表、选择发送端并连接；URL模式下输入地址并点击“载入URL”。
+2. NDI模式下刷新源列表、选择发送端并连接；URL模式下输入地址并点击“载入URL”，缺少协议时会自动按HTTPS处理。
 3. 确认输入预览、输入格式、色域和范围。自动识别不正确时再进行手动调整。
-4. 设置输出分辨率、帧率、扫描方式和显示模式。
+4. 设置输出分辨率、帧率、扫描方式和显示模式；选择“手动裁切”后调整区域并点击裁切框旁的小锁，其他显示模式无需锁定即可网页交互。
 5. 分别选择RGB和Alpha目标显示器，打开输出窗口或点击“全部输出”。
 6. 正式制作时以诊断页的 `RGB FPS` 和 `Alpha FPS` 为准；顶部FPS表示控制预览帧率。
 
@@ -109,6 +109,8 @@ en-US=English|en-US.txt
 | NDI Bridge不可用 | 安装或修复[Windows版NDI Runtime v6](https://ndi.link/NDIRedistV6)后重启程序；普通用户不需要安装NDI SDK。 |
 | Alpha输出全白或全黑 | 检查发送端是否真正输出带Alpha的Full NDI/媒体内容，不要仅依靠Alpha增益补偿。 |
 | 局域网URL被阻止 | 默认禁止私有网段；确认地址可信后，显式开启“允许访问局域网URL”。 |
+| URL地址提示无效 | 可直接输入域名或局域网主机地址，程序会自动补全 `https://`；不支持的协议仍会被拒绝。 |
+| 网页交互按钮不可用 | URL正常运行时，完整显示、居中裁满和拉伸模式可直接使用；手动裁切需要先点击裁切分辨率旁的小锁。交互支持原生网页组件、内容光标、左键、滚轮和键盘，右键不会打开浏览器菜单。 |
 | MOV或视频无法播放 | 解码能力取决于操作系统和Chromium支持的编码，可先转为受支持的H.264或其他常用格式。 |
 | 输出帧率低 | 使用轻量或暂停控制预览，确认输出帧率与显示器刷新率合理，并查看GPU、队列和P95指标。 |
 | 主窗口最小化后预览变慢 | 控制预览可能主动降帧；应检查独立输出窗口及诊断区的RGB/Alpha实际FPS。 |
@@ -214,7 +216,7 @@ not replace a genlocked SDI output card or hardware Fill/Key synchronization.
 Windows 10/11 x64 is the primary validated platform. Download the latest installer from
 [GitHub Releases](https://github.com/BroWei6657/rgb-alpha-splitter/releases).
 
-1. Download `RGB-Alpha-Splitter-Setup-1.3.0.exe`.
+1. Download `RGB-Alpha-Splitter-Setup-1.3.1.exe`.
 2. Verify it with the `SHA256SUMS.txt` file on the Release page.
 3. Run the installer and choose an installation directory.
 4. To use NDI mode, install a compatible **NDI Runtime**, then restart the application.
@@ -254,8 +256,8 @@ the NDI Runtime, NDI Tools, or SDK.
 - **GPU-first Windows output:** native D3D11 dual presentation with automatic compatibility fallback.
 - **Signal and color:** Rec.709/Rec.2020 SDR, Full/Limited range, common HD/UHD sizes,
   fractional frame rates, and 1080i TFF/BFF input handling.
-- **Geometry:** fit, center-fill, stretch, and eight-handle manual crop.
-- **URL tools:** natural/custom viewport, transparent background, freeze indication, and manual refresh.
+- **Geometry:** fit, center-fill, stretch, and eight-handle manual crop, with a small lock indicator beside the crop resolution to prevent accidental edits.
+- **URL tools:** natural/custom viewport, live transparent-background switching, freeze indication, manual refresh, and web interaction with native component behavior and content-aware cursors; left click, wheel, keyboard, and copy/paste shortcuts are supported, while right and middle input are blocked.
 - **Independent outputs:** separate RGB/Alpha display selection and fullscreen windows; minimizing the control window should not pause output.
 - **Control preview:** lightweight, full, and paused modes, with output performance prioritized while output windows are open.
 - **Diagnostics:** multi-select parallel 60-second charts, actual output FPS, frame time, queue, GPU, clock, connection state, and event logs.
@@ -292,9 +294,9 @@ or missing keys, and oversized catalogs are rejected.
 ### Quick start
 
 1. Start the application and choose NDI or URL mode, or load a local file/test pattern.
-2. In NDI mode, refresh sources, select the sender, and connect. In URL mode, enter the address and select Load URL.
+2. In NDI mode, refresh sources, select the sender, and connect. In URL mode, enter the address and select Load URL; a missing scheme is completed as HTTPS.
 3. Confirm the input preview and detected format, gamut, and range. Override them only when detection is wrong.
-4. Configure output resolution, frame rate, scan mode, and scaling.
+4. Configure output resolution, frame rate, scan mode, and scaling. In Manual Crop, adjust the region and select the small lock beside the crop resolution before web interaction; other modes need no lock.
 5. Select the RGB and Alpha displays, then open the windows or choose All Outputs.
 6. During production, use `RGB FPS` and `Alpha FPS` on the Diagnostics tab. The top FPS value is the control-preview rate.
 
@@ -306,6 +308,8 @@ or missing keys, and oversized catalogs are rejected.
 | NDI Bridge unavailable | Install or repair [NDI Runtime v6 for Windows](https://ndi.link/NDIRedistV6), then restart the application. Regular users do not need the NDI SDK. |
 | Alpha is solid white or black | Confirm the sender or media really contains Alpha; do not use Alpha gain to compensate for a missing channel. |
 | Private-network URL blocked | Private ranges are blocked by default. Enable Allow LAN URL only for a trusted address. |
+| URL is reported invalid | A bare domain or local-network host is accepted and receives an automatic `https://` prefix; unsupported protocols remain blocked. |
+| Web interaction is unavailable | While a URL is running, Fit, Center Fill, and Stretch can interact directly; Manual Crop requires the small lock beside the crop resolution. Native page components, content-aware cursors, left click, wheel, and keyboard are supported; right-click does not open the browser menu. |
 | MOV/video does not play | Codec support depends on the OS and Chromium. Transcode to supported H.264 or another common format. |
 | Output FPS is low | Use lightweight or paused control preview, choose a sensible output/display rate, and inspect GPU, queue, and P95 metrics. |
 | Preview slows when minimized | The control preview may throttle intentionally; check the output windows and actual RGB/Alpha FPS metrics. |

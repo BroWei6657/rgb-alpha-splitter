@@ -13,6 +13,22 @@ This file follows the versioned structure of [Keep a Changelog](https://keepacha
 
 - None.
 
+## [1.3.1] - 2026-07-19
+
+### 中文
+
+- URL 输入支持自动补全 HTTP/HTTPS 协议，并可在页面已载入时即时切换强制透明背景。
+- URL 模式新增网页交互：网页组件使用 Chromium 原生行为，预览光标跟随网页内容，支持左键、滚轮、键盘与复制粘贴快捷键；右键和中键不会转发。
+- 完整显示、居中裁满和拉伸模式可直接启用网页交互；手动裁切需先通过裁切分辨率旁的小锁锁定，锁定后保留当前裁切并关闭编辑。
+- 优化 URL 预览的帧采集、实际尺寸跟随和共享纹理生命周期，保持输入、RGB 与 Alpha 预览稳定且不增加逐帧 CPU 拷贝。
+
+### English
+
+- URL input now completes missing HTTP/HTTPS schemes, and Force Transparent Background can be changed while a page is loaded.
+- URL mode now supports web interaction through Chromium's native component behavior. The preview cursor follows page content; left click, wheel, keyboard, and copy/paste shortcuts are supported, while right and middle input are blocked.
+- Fit, Center Fill, and Stretch can enable web interaction directly. Manual Crop requires the small lock beside the crop resolution; locking preserves the crop and disables editing.
+- URL preview frame capture, actual-size tracking, and shared-texture lifetime are optimized to keep Input, RGB, and Alpha previews stable without per-frame CPU copies.
+
 ## [1.3.0] - 2026-07-18
 
 ### 中文

@@ -1,6 +1,6 @@
 {
   "name": "rgb-alpha-splitter",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "private": true,
   "description": "GPU-accelerated RGB and Alpha splitter for NDI, URL, local media, and test sources.",
   "author": "RGB Alpha Splitter Project",

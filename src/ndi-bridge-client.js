@@ -146,6 +146,21 @@
       return invoke("setUrlViewport", () => false, viewport);
     },
 
+    async setUrlInteraction(enabled) {
+      return invoke("setUrlInteraction", () => false, enabled);
+    },
+
+    async setUrlTransparent(enabled) {
+      return invoke("setUrlTransparent", () => false, enabled);
+    },
+
+    sendUrlInput(input) {
+      const bridge = window.ndiBridge;
+      if (!bridge || typeof bridge.sendUrlInput !== "function") return false;
+      bridge.sendUrlInput(input);
+      return true;
+    },
+
     onUrlStatus(callback) {
       const bridge = window.ndiBridge;
       if (bridge && typeof bridge.onUrlStatus === "function") bridge.onUrlStatus(callback);

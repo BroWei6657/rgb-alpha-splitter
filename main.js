@@ -57,6 +57,11 @@ let urlSourceWindow = null;
 let lastUrlLoggedState = "stopped";
 let urlMonitor = null;
 let urlPreviewTimer = null;
+let urlInteractionEnabled = false;
+let urlTransparentBackground = true;
+let urlInputCommandQueue = Promise.resolve();
+let urlInputFailureLogged = false;
+let urlCursorProbeAt = 0;
 let sourceGeneration = 0;
 let activeSource = { type: "test", generation: 0 };
 let signalConfig = {
@@ -339,16 +344,109 @@ function stopUrlSource() {
   }
   const win = urlSourceWindow;
   urlSourceWindow = null;
+  urlInteractionEnabled = false;
+  urlInputCommandQueue = Promise.resolve();
+  urlInputFailureLogged = false;
+  urlCursorProbeAt = 0;
   if (win && !win.isDestroyed()) win.destroy();
   if (urlSourceStatus.active) logger.write("info", "url", "stopped");
-  return sendUrlStatus({ active: false, state: "stopped", url: null });
+  return sendUrlStatus({ active: false, state: "stopped", url: null, interactive: false, cursor: "default" });
+}
+
+function normalizeUrlInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return raw;
+  if (/^https?:\/\//i.test(raw) || /^data:/i.test(raw)) return raw;
+  if (/^\/\//.test(raw)) return `https:${raw}`;
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(raw)) return raw;
+  return `https://${raw}`;
+}
+
+const URL_CURSOR_TYPES = new Set([
+  "default", "pointer", "crosshair", "text", "wait", "help", "e-resize", "n-resize", "ne-resize",
+  "nw-resize", "s-resize", "se-resize", "sw-resize", "w-resize", "ns-resize", "ew-resize",
+  "nesw-resize", "nwse-resize", "col-resize", "row-resize", "move", "vertical-text", "cell",
+  "context-menu", "alias", "progress", "no-drop", "copy", "none", "not-allowed", "zoom-in",
+  "zoom-out", "grab", "grabbing", "all-scroll"
+]);
+
+function normalizeUrlCursor(type) {
+  const aliases = {
+    hand: "pointer",
+    pointer: "default",
+    nodrop: "no-drop",
+    null: "default",
+    "drag-drop-none": "no-drop",
+    "drag-drop-move": "move",
+    "drag-drop-copy": "copy",
+    "drag-drop-link": "alias",
+    "m-panning": "all-scroll",
+    "m-panning-vertical": "ns-resize",
+    "m-panning-horizontal": "ew-resize",
+    "ns-no-resize": "not-allowed",
+    "ew-no-resize": "not-allowed",
+    "nesw-no-resize": "not-allowed",
+    "nwse-no-resize": "not-allowed",
+    custom: "default"
+  };
+  const normalized = aliases[type] || type;
+  return URL_CURSOR_TYPES.has(normalized) ? normalized : "default";
+}
+
+function normalizeUrlCssCursor(type) {
+  return URL_CURSOR_TYPES.has(type) ? type : "default";
+}
+
+function ensureUrlInputDebugger(win) {
+  if (!win || win.isDestroyed()) return false;
+  try {
+    if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach();
+    return true;
+  } catch (error) {
+    logger.write("error", "url", "input_debugger_attach_failed", { message: error.message });
+    return false;
+  }
+}
+
+function cdpInputModifiers(modifiers) {
+  const values = new Set(Array.isArray(modifiers) ? modifiers : []);
+  return (values.has("alt") ? 1 : 0) |
+    (values.has("control") ? 2 : 0) |
+    (values.has("command") ? 4 : 0) |
+    (values.has("shift") ? 8 : 0);
+}
+
+function cdpVirtualKeyCode(key, code) {
+  const named = {
+    Backspace: 8, Tab: 9, Enter: 13, Shift: 16, Control: 17, Alt: 18, Escape: 27, " ": 32,
+    PageUp: 33, PageDown: 34, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39,
+    ArrowDown: 40, Insert: 45, Delete: 46, Meta: 91
+  };
+  if (named[key]) return named[key];
+  if (/^Key[A-Z]$/.test(code || "")) return code.charCodeAt(3);
+  if (/^Digit[0-9]$/.test(code || "")) return code.charCodeAt(5);
+  if (typeof key === "string" && key.length === 1) return key.toUpperCase().charCodeAt(0);
+  return 0;
+}
+
+function cdpEditCommands(input) {
+  const modifiers = new Set(Array.isArray(input.modifiers) ? input.modifiers : []);
+  if (!modifiers.has("control") && !modifiers.has("command")) return undefined;
+  const key = String(input.key || "").toLowerCase();
+  if (key === "a") return ["SelectAll"];
+  if (key === "c") return ["Copy"];
+  if (key === "x") return ["Cut"];
+  if (key === "v") return ["Paste"];
+  if (key === "z") return [modifiers.has("shift") ? "Redo" : "Undo"];
+  if (key === "y") return ["Redo"];
+  return undefined;
 }
 
 async function startUrlSource(options = {}) {
   if (!nativeNdi || typeof nativeNdi.publishBgraFrame !== "function") {
     throw new Error("URL frame publisher is unavailable. Rebuild the native module first.");
   }
-  const rawUrl = String(options.url || "").trim();
+  const rawUrl = normalizeUrlInput(options.url);
   let parsed;
   try {
     parsed = new URL(rawUrl);
@@ -366,6 +464,7 @@ async function startUrlSource(options = {}) {
   const useGpuTexture = engineStatus.gpuAvailable && options.forceCompatibility !== true;
 
   stopUrlSource();
+  urlTransparentBackground = transparentBackground;
   if (nativeNdi) nativeNdi.disconnect();
   const source = activateSource("url");
   logger.write("info", "url", "loading", { url: rawUrl, width, height, fps });
@@ -417,7 +516,16 @@ async function startUrlSource(options = {}) {
   });
   win.setBackgroundColor("#00000000");
   urlSourceWindow = win;
+  urlInputCommandQueue = Promise.resolve();
+  urlInputFailureLogged = false;
+  urlCursorProbeAt = 0;
   win.webContents.setAudioMuted(true);
+  win.webContents.on("cursor-changed", (_event, type) => {
+    if (win !== urlSourceWindow || !urlInteractionEnabled) return;
+    const cursor = normalizeUrlCursor(type);
+    if (cursor === "default") return;
+    if (cursor !== urlSourceStatus.cursor) sendUrlStatus({ cursor });
+  });
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (event, targetUrl) => {
     let protocol = "";
@@ -428,8 +536,38 @@ async function startUrlSource(options = {}) {
   });
   if (typeof win.webContents.setFrameRate === "function") win.webContents.setFrameRate(fps);
   let gpuFallbackStarted = false;
+  let previewCapturePending = false;
+  let lastPreviewCaptureAt = 0;
+  const publishPreviewBitmap = (capture) => {
+    const size = capture.getSize();
+    if (!size.width || !size.height || win !== urlSourceWindow) return false;
+    const bitmap = capture.toBitmap();
+    nativeNdi.publishBgraFrame(bitmap, size.width, size.height, fps, 1);
+    urlSourceStatus.width = size.width;
+    urlSourceStatus.height = size.height;
+    return true;
+  };
+  const requestPreviewCapture = () => {
+    if (!useGpuTexture || previewCapturePending || win !== urlSourceWindow || win.isDestroyed()) return;
+    const now = Date.now();
+    if (now - lastPreviewCaptureAt < 1000 / Math.max(1, Math.min(15, fps))) return;
+    previewCapturePending = true;
+    lastPreviewCaptureAt = now;
+    setTimeout(() => {
+      if (win !== urlSourceWindow || win.isDestroyed()) {
+        previewCapturePending = false;
+        return;
+      }
+      win.webContents.capturePage().then((capture) => {
+        publishPreviewBitmap(capture);
+      }).catch(() => {}).finally(() => { previewCapturePending = false; });
+    }, 0);
+  };
   win.webContents.on("paint", (event, _dirty, image) => {
-    if (win !== urlSourceWindow || win.isDestroyed() || activeSource.generation !== source.generation) return;
+    if (win !== urlSourceWindow || win.isDestroyed() || activeSource.generation !== source.generation) {
+      if (event.texture && typeof event.texture.release === "function") event.texture.release();
+      return;
+    }
     if (event.texture) {
       try {
         const submitted = nativeNdi.submitGpuSharedTexture(event.texture.textureInfo.sharedTextureHandle);
@@ -444,12 +582,13 @@ async function startUrlSource(options = {}) {
       } finally {
         event.texture.release();
       }
+      requestPreviewCapture();
       return;
     }
     const size = image.getSize();
     if (!size.width || !size.height) return;
     try {
-      nativeNdi.publishBgraFrame(image.toBitmap(), size.width, size.height, fps, 1);
+      if (!publishPreviewBitmap(image)) return;
       urlSourceStatus.frameCount = Number(urlSourceStatus.frameCount || 0) + 1;
       urlSourceStatus.lastFrameAt = Date.now();
     } catch (error) {
@@ -462,6 +601,7 @@ async function startUrlSource(options = {}) {
       await win.webContents.insertCSS("html,body{background:transparent !important;}").catch(() => {});
     }
     if (typeof win.webContents.invalidate === "function") win.webContents.invalidate();
+    await applyUrlTransparentBackground(urlTransparentBackground, false);
     let natural = null;
     try {
       natural = await win.webContents.executeJavaScript(`(() => {
@@ -500,7 +640,8 @@ async function startUrlSource(options = {}) {
   });
   sendUrlStatus({ active: true, state: "loading", url: rawUrl, width, height, fps, actualFps: 0,
     frozenMs: 0, frameCount: 0, lastFrameAt: Date.now(), generation: source.generation,
-    hasAlpha: transparentBackground, allowLan, backend: useGpuTexture ? "gpu" : "compatibility", error: null });
+    hasAlpha: transparentBackground, transparentBackground, allowLan, backend: useGpuTexture ? "gpu" : "compatibility",
+    interactive: false, cursor: "default", error: null });
   try {
     await win.loadURL(rawUrl);
   } catch (error) {
@@ -508,17 +649,6 @@ async function startUrlSource(options = {}) {
     throw error;
   }
   let previousFrames = 0;
-  let previewCapturePending = false;
-  if (useGpuTexture) {
-    urlPreviewTimer = setInterval(() => {
-      if (previewCapturePending || win !== urlSourceWindow || win.isDestroyed()) return;
-      previewCapturePending = true;
-      win.webContents.capturePage().then((image) => {
-        const size = image.getSize();
-        if (size.width && size.height && win === urlSourceWindow) nativeNdi.publishBgraFrame(image.toBitmap(), size.width, size.height, fps, 1);
-      }).catch(() => {}).finally(() => { previewCapturePending = false; });
-    }, 66);
-  }
   urlMonitor = setInterval(() => {
     if (win !== urlSourceWindow || win.isDestroyed() || activeSource.generation !== source.generation) return;
     const now = Date.now();
@@ -530,6 +660,101 @@ async function startUrlSource(options = {}) {
     sendUrlStatus({ actualFps, frozenMs, state });
   }, 1000);
   return urlSourceStatus;
+}
+
+function sendUrlInputEvent(input) {
+  if (!urlInteractionEnabled || !urlSourceWindow || urlSourceWindow.isDestroyed()) return false;
+  if (!input || typeof input !== "object") return false;
+  const allowedTypes = new Set(["mouseMove", "mouseDown", "mouseUp", "mouseWheel", "keyDown", "keyUp", "char"]);
+  if (!allowedTypes.has(input.type)) return false;
+  if (["mouseDown", "mouseUp"].includes(input.type) && input.button !== "left") return false;
+  if (input.type === "mouseMove" && (Number(input.buttons) & ~1)) return false;
+  const win = urlSourceWindow;
+  if (!ensureUrlInputDebugger(win)) return false;
+  const x = Math.max(0, Math.round(Number(input.x) || 0));
+  const y = Math.max(0, Math.round(Number(input.y) || 0));
+  const modifiers = cdpInputModifiers(input.modifiers);
+  let method = "Input.dispatchMouseEvent";
+  let params;
+  if (input.type === "mouseMove") {
+    const pressed = (Number(input.buttons) & 1) !== 0;
+    params = { type: "mouseMoved", x, y, button: pressed ? "left" : "none", buttons: pressed ? 1 : 0, modifiers, pointerType: "mouse" };
+  } else if (input.type === "mouseDown" || input.type === "mouseUp") {
+    const pressed = input.type === "mouseDown";
+    params = { type: pressed ? "mousePressed" : "mouseReleased", x, y, button: "left", buttons: pressed ? 1 : 0,
+      clickCount: 1, modifiers, pointerType: "mouse" };
+  } else if (input.type === "mouseWheel") {
+    const clampDelta = (value) => Math.max(-10000, Math.min(10000, Number.isFinite(Number(value)) ? Number(value) : 0));
+    const scale = Number(input.deltaMode) === 1 ? 16 : Number(input.deltaMode) === 2 ? Math.max(1, urlSourceStatus.height || 1) : 1;
+    params = { type: "mouseWheel", x, y, deltaX: clampDelta(input.deltaX) * scale,
+      deltaY: clampDelta(input.deltaY) * scale, modifiers, pointerType: "mouse" };
+  } else if (input.type === "char") {
+    method = "Input.insertText";
+    params = { text: typeof input.key === "string" ? input.key : "" };
+  } else {
+    method = "Input.dispatchKeyEvent";
+    const key = typeof input.key === "string" ? input.key : "";
+    const code = typeof input.code === "string" ? input.code : "";
+    const virtualKeyCode = cdpVirtualKeyCode(key, code);
+    params = { type: input.type === "keyDown" ? "keyDown" : "keyUp", key, code, modifiers,
+      windowsVirtualKeyCode: virtualKeyCode, nativeVirtualKeyCode: virtualKeyCode };
+    const commands = input.type === "keyDown" ? cdpEditCommands(input) : undefined;
+    if (commands) params.commands = commands;
+  }
+  const probeCursor = input.type === "mouseMove" && Date.now() - urlCursorProbeAt >= 50;
+  if (probeCursor) urlCursorProbeAt = Date.now();
+  urlInputCommandQueue = urlInputCommandQueue.then(() => {
+    if (win !== urlSourceWindow || win.isDestroyed() || !win.webContents.debugger.isAttached()) return undefined;
+    return win.webContents.debugger.sendCommand(method, params).then(async () => {
+      if (!probeCursor || win !== urlSourceWindow || !urlInteractionEnabled) return;
+      const result = await win.webContents.debugger.sendCommand("Runtime.evaluate", {
+        expression: `(() => {
+          const element = document.elementFromPoint(${x}, ${y});
+          if (!element) return "default";
+          const cursor = getComputedStyle(element).cursor;
+          if (cursor && cursor !== "auto") return cursor;
+          if (element.closest('textarea,input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]),[contenteditable="true"]')) return "text";
+          if (element.closest('a[href]')) return "pointer";
+          return "default";
+        })()`,
+        returnByValue: true
+      });
+      const cursor = normalizeUrlCssCursor(result && result.result && result.result.value);
+      if (cursor !== urlSourceStatus.cursor) sendUrlStatus({ cursor });
+    });
+  }).catch((error) => {
+    if (!urlInputFailureLogged) {
+      urlInputFailureLogged = true;
+      logger.write("error", "url", "input_dispatch_failed", { method, message: error.message });
+    }
+  });
+  return true;
+}
+
+async function applyUrlTransparentBackground(enabled, notify = true) {
+  urlTransparentBackground = Boolean(enabled);
+  if (!urlSourceWindow || urlSourceWindow.isDestroyed()) return false;
+  const background = urlTransparentBackground ? "transparent" : "#ffffff";
+  try {
+    await urlSourceWindow.webContents.executeJavaScript(`
+      (() => {
+        const styleId = "__rgbAlphaSplitterBackground";
+        let style = document.getElementById(styleId);
+        if (!style) {
+          style = document.createElement("style");
+          style.id = styleId;
+          (document.head || document.documentElement).appendChild(style);
+        }
+        style.textContent = "html,body{background:${background} !important;}";
+      })()
+    `, true);
+    urlSourceWindow.setBackgroundColor(urlTransparentBackground ? "#00000000" : "#ffffff");
+    if (typeof urlSourceWindow.webContents.invalidate === "function") urlSourceWindow.webContents.invalidate();
+    sendUrlStatus({ hasAlpha: urlTransparentBackground, transparentBackground: urlTransparentBackground });
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 async function probeGpuSharedTexture() {
@@ -801,9 +1026,10 @@ function createWindow() {
                 workspaceColumns: getComputedStyle(document.querySelector(".workspace")).gridTemplateColumns.trim().split(/\\s+/).length,
                 horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth
               },
-              uiUpgrade: ["outputResolution","outputFrameRate","scanMode","scalingMode","refreshUrlBtn","cropOverlay","restoreAutoColorBtn","gpuPreference","previewPolicy","metricGpuAdapter","themeMode","languageMode","inspectorTabInput","inspectorTabSignal","inspectorTabOutput","inspectorTabDiagnostics","inspectorInputPanel","inspectorSignalPanel","inspectorOutputPanel","inspectorDiagnosticsPanel","diagnosticsSection","diagnosticChartMetric","diagnosticChart","openLogsBtn","syncMode","metricClockSource"].every(id => Boolean(document.getElementById(id))) &&
+              uiUpgrade: ["outputResolution","outputFrameRate","scanMode","scalingMode","refreshUrlBtn","urlInteractionBtn","cropOverlay","cropLockBtn","restoreAutoColorBtn","gpuPreference","previewPolicy","metricGpuAdapter","themeMode","languageMode","inspectorTabInput","inspectorTabSignal","inspectorTabOutput","inspectorTabDiagnostics","inspectorInputPanel","inspectorSignalPanel","inspectorOutputPanel","inspectorDiagnosticsPanel","diagnosticsSection","diagnosticChartMetric","diagnosticChart","openLogsBtn","syncMode","metricClockSource"].every(id => Boolean(document.getElementById(id))) &&
                 document.querySelectorAll("[data-diagnostic-metric]").length === 6 &&
-                document.querySelectorAll("[data-diagnostic-track]").length === 6
+                document.querySelectorAll("[data-diagnostic-track]").length === 6,
+              cropLockPlacement: Boolean(document.querySelector("#cropSelection #cropLockBtn"))
             }, (_key, value) => typeof value === "bigint" ? value.toString() : value);
           })()
         `));
@@ -816,7 +1042,8 @@ function createWindow() {
             controlPlaneResult.checkerPreview.checkerOffBackground === controlPlaneResult.checkerPreview.checkerOnBackground ||
             controlPlaneResult.checkerPreview.checkerOnBackground !== "rgba(0, 0, 0, 0)" || !controlPlaneResult.detailedEventLog ||
             JSON.stringify(controlPlaneResult.panelIndexes) !== JSON.stringify({ input: ["01", "01", "02"], signal: ["01", "02"], output: ["01"], diagnostics: ["01"] }) ||
-            controlPlaneResult.narrowLayout.workspaceColumns !== 2 || controlPlaneResult.narrowLayout.horizontalOverflow) {
+            controlPlaneResult.narrowLayout.workspaceColumns !== 2 || controlPlaneResult.narrowLayout.horizontalOverflow ||
+            !controlPlaneResult.cropLockPlacement) {
           throw new Error(`Control-plane validation failed: ${JSON.stringify(controlPlaneResult)}`);
         }
         const gpuSharedTextureProbe = await probeGpuSharedTexture();
@@ -827,18 +1054,176 @@ function createWindow() {
         }
         let privateUrlBlocked = false;
         try {
-          await startUrlSource({ url: "http://127.0.0.1:9/", width: 320, height: 180, fps: 30, allowLan: false });
+          await startUrlSource({ url: "127.0.0.1:9/", width: 320, height: 180, fps: 30, allowLan: false });
         } catch (error) {
           privateUrlBlocked = /private network|localhost/.test(error.message);
         }
         if (!privateUrlBlocked) throw new Error("URL private-network policy did not reject localhost.");
+        let externalUrlResult = null;
+        const externalSmokeUrl = String(process.env.NDI_SMOKE_URL || "").trim();
+        if (externalSmokeUrl) {
+          const beforeExternal = nativeNdi.getSharedFrame(0n);
+          const beforeExternalSequence = beforeExternal ? BigInt(beforeExternal.sequence) : 0n;
+          try {
+            await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                document.getElementById("urlModeBtn").click();
+                document.getElementById("urlInput").value = ${JSON.stringify(externalSmokeUrl)};
+                document.getElementById("urlTransparent").checked = false;
+                document.getElementById("urlAllowLan").checked = false;
+                document.getElementById("loadUrlBtn").click();
+              })()
+            `);
+            let externalFrame = null;
+            for (let attempt = 0; attempt < 80 && (!externalFrame || urlSourceStatus.state !== "running"); ++attempt) {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              externalFrame = nativeNdi.getSharedFrame(beforeExternalSequence);
+            }
+            if (!externalFrame || urlSourceStatus.state !== "running") {
+              throw new Error(`External URL did not reach running state: ${urlSourceStatus.error || urlSourceStatus.state}`);
+            }
+            urlInteractionEnabled = true;
+            let externalInteraction = null;
+            if (process.env.NDI_SMOKE_INTERACTION === "1") {
+              const target = await urlSourceWindow.webContents.executeJavaScript(`(() => {
+                const element = Array.from(document.querySelectorAll('#kw,input[type="search"],input[type="text"],textarea,[contenteditable="true"]'))
+                  .find((item) => {
+                    const rect = item.getBoundingClientRect();
+                    const style = getComputedStyle(item);
+                    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                    return rect.width > 8 && rect.height > 8 && rect.bottom > 0 && rect.right > 0 &&
+                      style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || 1) > 0 &&
+                      (hit === item || item.contains(hit));
+                  });
+                if (!element) return null;
+                window.__rgbAlphaSmokeTarget = element;
+                const rect = element.getBoundingClientRect();
+                return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2),
+                  tag: element.tagName, expectedCursor: getComputedStyle(element).cursor,
+                  beforeValue: String('value' in element ? element.value : element.textContent).slice(0, 100) };
+              })()`);
+              if (!target) throw new Error("External URL has no visible text input for interaction validation.");
+              sendUrlInputEvent({ type: "mouseMove", x: target.x, y: target.y, buttons: 0, modifiers: [] });
+              sendUrlInputEvent({ type: "mouseDown", x: target.x, y: target.y, button: "left", modifiers: [] });
+              sendUrlInputEvent({ type: "mouseUp", x: target.x, y: target.y, button: "left", modifiers: [] });
+              sendUrlInputEvent({ type: "keyDown", key: "x", code: "KeyX", modifiers: [] });
+              sendUrlInputEvent({ type: "char", key: "x", code: "KeyX", modifiers: [] });
+              sendUrlInputEvent({ type: "keyUp", key: "x", code: "KeyX", modifiers: [] });
+              await new Promise((resolve) => setTimeout(resolve, 160));
+              const afterValue = await urlSourceWindow.webContents.executeJavaScript(`String(
+                'value' in window.__rgbAlphaSmokeTarget ? window.__rgbAlphaSmokeTarget.value : window.__rgbAlphaSmokeTarget.textContent
+              ).slice(0, 100)`);
+              externalInteraction = { ...target, afterValue, cursor: urlSourceStatus.cursor };
+              const expectedCursor = target.expectedCursor === "pointer" ? "pointer" :
+                target.expectedCursor === "text" || target.tag === "INPUT" || target.tag === "TEXTAREA" ? "text" : "default";
+              if (afterValue === target.beforeValue || urlSourceStatus.cursor !== expectedCursor) {
+                throw new Error(`External URL native interaction failed: ${JSON.stringify(externalInteraction)}`);
+              }
+            }
+            let lastExternalSequence = BigInt(externalFrame.sequence);
+            let externalSamples = 0;
+            let blankExternalFrames = 0;
+            const externalChecksums = new Set();
+            const externalPreviewProbe = mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const canvas = document.getElementById("sourceCanvas");
+                const context = canvas.getContext("2d");
+                const dimensions = new Set();
+                let blankSamples = 0;
+                for (let attempt = 0; attempt < 500; ++attempt) {
+                  await new Promise((resolve) => setTimeout(resolve, 10));
+                  dimensions.add(canvas.width + "x" + canvas.height);
+                  const points = [[0, 0], [canvas.width >> 1, canvas.height >> 1],
+                    [canvas.width - 1, 0], [0, canvas.height - 1], [canvas.width - 1, canvas.height - 1]];
+                  let visible = false;
+                  for (const [x, y] of points) {
+                    if (context.getImageData(Math.max(0, x), Math.max(0, y), 1, 1).data[3] !== 0) {
+                      visible = true;
+                      break;
+                    }
+                  }
+                  if (!visible) blankSamples += 1;
+                }
+                return { blankSamples, dimensions: Array.from(dimensions) };
+              })()
+            `);
+            for (let attempt = 0; attempt < 500; ++attempt) {
+              sendUrlInputEvent({ type: "mouseMove", x: 480 + (attempt % 3), y: 270, buttons: 0, modifiers: [] });
+              await new Promise((resolve) => setTimeout(resolve, 10));
+              const frame = nativeNdi.getSharedFrame(lastExternalSequence);
+              if (!frame || !frame.data) continue;
+              lastExternalSequence = BigInt(frame.sequence);
+              const bytes = frame.data instanceof Uint8Array ? frame.data : new Uint8Array(frame.data);
+              const pixelCount = Math.floor(bytes.length / 4);
+              const pixelStride = Math.max(1, Math.floor(pixelCount / 4096));
+              let checksum = 0;
+              let visibleAlpha = false;
+              for (let pixel = 0; pixel < pixelCount; pixel += pixelStride) {
+                const index = pixel * 4;
+                checksum = (checksum + bytes[index] + index) >>> 0;
+                visibleAlpha = visibleAlpha || bytes[index + 3] !== 0;
+              }
+              externalChecksums.add(checksum);
+              externalSamples += 1;
+              if (!visibleAlpha) blankExternalFrames += 1;
+            }
+            const previewProbe = await externalPreviewProbe;
+            externalUrlResult = {
+              url: externalSmokeUrl,
+              state: urlSourceStatus.state,
+              width: Number(externalFrame.width),
+              height: Number(externalFrame.height),
+              samples: externalSamples,
+              blankFrames: blankExternalFrames,
+              previewBlankSamples: previewProbe.blankSamples,
+              previewDimensions: previewProbe.dimensions,
+              uniqueChecksums: externalChecksums.size,
+              interactionForwarded: urlInteractionEnabled,
+              nativeInteraction: externalInteraction
+            };
+            if (blankExternalFrames || previewProbe.blankSamples || previewProbe.dimensions.length !== 1) {
+              throw new Error(`External URL preview stability failed: ${JSON.stringify(externalUrlResult)}`);
+            }
+            if (process.env.NDI_SMOKE_SCREENSHOT_PATH) {
+              const screenshot = await mainWindow.webContents.capturePage();
+              fs.writeFileSync(process.env.NDI_SMOKE_SCREENSHOT_PATH, screenshot.toPNG());
+            }
+          } finally {
+            stopUrlSource();
+          }
+        }
         const urlBefore = nativeNdi.getSharedFrame(0n);
         const urlBeforeSequence = urlBefore ? BigInt(urlBefore.sequence) : 0n;
         const smokePage = "data:text/html," + encodeURIComponent(`<!doctype html><style>
           html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden}
           .shape{position:absolute;inset:20px;background:rgba(255,40,80,.45);animation:pulse .2s infinite alternate}
+          button,a,summary{cursor:pointer} input{cursor:text}
+          #wheel-target{position:absolute;left:200px;top:20px;width:100px;height:100px;overflow:auto;background:rgba(40,120,255,.35)}
+          #wheel-spacer{height:800px}
           @keyframes pulse{to{transform:translateX(2px)}}
-        </style><div class=shape></div>`);
+        </style><div class=shape></div><button id="interaction-target" style="position:absolute;left:40px;top:20px;width:120px;height:32px">Click</button>
+          <label style="position:absolute;left:40px;top:62px"><input id="checkbox-target" type="checkbox">Check</label>
+          <input id="keyboard-target" style="position:absolute;left:40px;top:92px;width:120px;height:24px" value="">
+          <select id="select-target" style="position:absolute;left:40px;top:126px;width:120px;height:24px"><option value="one">One</option><option value="two">Two</option></select>
+          <details id="details-target" style="position:absolute;left:40px;top:154px"><summary>Details</summary><span>Open</span></details>
+          <div id="wheel-target"><div id="wheel-spacer"></div></div><script>
+           document.body.dataset.leftClicks = "0";
+           document.body.dataset.trustedClicks = "0";
+           document.body.dataset.checkboxChanges = "0";
+           document.body.dataset.trustedCheckboxChanges = "0";
+           document.body.dataset.wheelEvents = "0";
+           document.getElementById("interaction-target").addEventListener("click", (event) => {
+             document.body.dataset.leftClicks = String(Number(document.body.dataset.leftClicks) + 1);
+             if (event.isTrusted) document.body.dataset.trustedClicks = String(Number(document.body.dataset.trustedClicks) + 1);
+           });
+           document.getElementById("checkbox-target").addEventListener("change", (event) => {
+             document.body.dataset.checkboxChanges = String(Number(document.body.dataset.checkboxChanges) + 1);
+             if (event.isTrusted) document.body.dataset.trustedCheckboxChanges = String(Number(document.body.dataset.trustedCheckboxChanges) + 1);
+           });
+           document.getElementById("wheel-target").addEventListener("wheel", () => {
+             document.body.dataset.wheelEvents = String(Number(document.body.dataset.wheelEvents) + 1);
+           });
+         </script>`);
         await startUrlSource({ url: smokePage, width: 320, height: 180, fps: 30, transparentBackground: true });
         let urlFrame = null;
         for (let attempt = 0; attempt < 40 && (!urlFrame || !urlFrame.hasAlpha); ++attempt) {
@@ -864,6 +1249,148 @@ function createWindow() {
           hasAlpha: Boolean(urlFrame.hasAlpha),
           sequence: String(urlFrame.sequence)
         };
+        await mainWindow.webContents.executeJavaScript(`
+          (async () => {
+            const status = await window.ndiBridge.getUrlStatus();
+            document.getElementById("urlModeBtn").click();
+            document.getElementById("urlInput").value = status.url;
+            document.getElementById("loadUrlBtn").click();
+            await new Promise((resolve) => setTimeout(resolve, 120));
+          })()
+        `);
+        const urlInteractionResult = JSON.parse(await mainWindow.webContents.executeJavaScript(`
+          (async () => {
+            const scaling = document.getElementById("scalingMode");
+            scaling.value = "crop";
+            scaling.dispatchEvent(new Event("change", { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 80));
+            const lock = document.getElementById("cropLockBtn");
+            lock.click();
+            await new Promise((resolve) => setTimeout(resolve, 40));
+            const interaction = document.getElementById("urlInteractionBtn");
+            const available = !interaction.disabled && lock.getAttribute("aria-pressed") === "true";
+            interaction.click();
+            await new Promise((resolve) => setTimeout(resolve, 80));
+            return JSON.stringify({ available, accepted: interaction.getAttribute("aria-pressed") === "true", cropLocked: lock.getAttribute("aria-pressed") === "true", lockIcon: lock.classList.contains("is-locked") });
+          })()
+        `));
+        if (!urlInteractionResult.available || !urlInteractionResult.accepted || !urlInteractionResult.cropLocked || !urlInteractionResult.lockIcon) {
+          throw new Error(`URL interaction gating failed: ${JSON.stringify(urlInteractionResult)}`);
+        }
+        sendUrlInputEvent({ type: "mouseMove", x: 80, y: 36, buttons: 0, modifiers: [] });
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        urlInteractionResult.pointerCursor = urlSourceStatus.cursor;
+        urlInteractionResult.previewPointerCursor = await mainWindow.webContents.executeJavaScript(
+          "getComputedStyle(document.getElementById('sourceCanvas')).cursor"
+        );
+        sendUrlInputEvent({ type: "mouseDown", x: 80, y: 36, button: "left", modifiers: [] });
+        sendUrlInputEvent({ type: "mouseUp", x: 80, y: 36, button: "left", modifiers: [] });
+        sendUrlInputEvent({ type: "mouseDown", x: 48, y: 72, button: "left", modifiers: [] });
+        sendUrlInputEvent({ type: "mouseUp", x: 48, y: 72, button: "left", modifiers: [] });
+        sendUrlInputEvent({ type: "mouseMove", x: 80, y: 104, buttons: 0, modifiers: [] });
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        urlInteractionResult.textCursor = urlSourceStatus.cursor;
+        urlInteractionResult.previewTextCursor = await mainWindow.webContents.executeJavaScript(
+          "getComputedStyle(document.getElementById('sourceCanvas')).cursor"
+        );
+        sendUrlInputEvent({ type: "mouseDown", x: 80, y: 104, button: "left", modifiers: [] });
+        sendUrlInputEvent({ type: "mouseUp", x: 80, y: 104, button: "left", modifiers: [] });
+        sendUrlInputEvent({ type: "keyDown", key: "a", code: "KeyA", modifiers: [] });
+        sendUrlInputEvent({ type: "char", key: "a", code: "KeyA", modifiers: [] });
+        sendUrlInputEvent({ type: "keyUp", key: "a", code: "KeyA", modifiers: [] });
+        sendUrlInputEvent({ type: "keyDown", key: "a", code: "KeyA", modifiers: ["control"] });
+        sendUrlInputEvent({ type: "keyUp", key: "a", code: "KeyA", modifiers: ["control"] });
+        sendUrlInputEvent({ type: "keyDown", key: "c", code: "KeyC", modifiers: ["control"] });
+        sendUrlInputEvent({ type: "keyUp", key: "c", code: "KeyC", modifiers: ["control"] });
+        sendUrlInputEvent({ type: "keyDown", key: "ArrowRight", code: "ArrowRight", modifiers: [] });
+        sendUrlInputEvent({ type: "keyUp", key: "ArrowRight", code: "ArrowRight", modifiers: [] });
+        sendUrlInputEvent({ type: "keyDown", key: "b", code: "KeyB", modifiers: [] });
+        sendUrlInputEvent({ type: "char", key: "b", code: "KeyB", modifiers: [] });
+        sendUrlInputEvent({ type: "keyUp", key: "b", code: "KeyB", modifiers: [] });
+        sendUrlInputEvent({ type: "keyDown", key: "v", code: "KeyV", modifiers: ["control"] });
+        sendUrlInputEvent({ type: "keyUp", key: "v", code: "KeyV", modifiers: ["control"] });
+        sendUrlInputEvent({ type: "mouseDown", x: 80, y: 166, button: "left", modifiers: [] });
+        sendUrlInputEvent({ type: "mouseUp", x: 80, y: 166, button: "left", modifiers: [] });
+        sendUrlInputEvent({ type: "mouseDown", x: 80, y: 138, button: "left", modifiers: [] });
+        sendUrlInputEvent({ type: "mouseUp", x: 80, y: 138, button: "left", modifiers: [] });
+        sendUrlInputEvent({ type: "keyDown", key: "ArrowDown", code: "ArrowDown", modifiers: [] });
+        sendUrlInputEvent({ type: "keyUp", key: "ArrowDown", code: "ArrowDown", modifiers: [] });
+        sendUrlInputEvent({ type: "keyDown", key: "Enter", code: "Enter", modifiers: [] });
+        sendUrlInputEvent({ type: "keyUp", key: "Enter", code: "Enter", modifiers: [] });
+        const wheelForwarded = sendUrlInputEvent({ type: "mouseWheel", x: 240, y: 60, deltaX: 0, deltaY: 120, deltaZ: 0, deltaMode: 0, modifiers: [] });
+        const rightMoveForwarded = sendUrlInputEvent({ type: "mouseMove", x: 80, y: 60, buttons: 2, modifiers: [] });
+        const rightInputForwarded = sendUrlInputEvent({ type: "mouseDown", x: 80, y: 60, button: "right", modifiers: [] });
+        await new Promise((resolve) => setTimeout(resolve, 240));
+        const componentState = await urlSourceWindow.webContents.executeJavaScript(`({
+          leftClickCount: Number(document.body.dataset.leftClicks || 0),
+          trustedClickCount: Number(document.body.dataset.trustedClicks || 0),
+          checkboxChecked: document.getElementById("checkbox-target").checked,
+          checkboxChanges: Number(document.body.dataset.checkboxChanges || 0),
+          trustedCheckboxChanges: Number(document.body.dataset.trustedCheckboxChanges || 0),
+          keyboardValue: document.getElementById("keyboard-target").value,
+          detailsOpen: document.getElementById("details-target").open,
+          selectValue: document.getElementById("select-target").value
+        })`);
+        const wheelState = await urlSourceWindow.webContents.executeJavaScript("({ events: Number(document.body.dataset.wheelEvents || 0), scrollTop: document.getElementById('wheel-target').scrollTop })");
+        await mainWindow.webContents.executeJavaScript("document.getElementById('urlInteractionBtn').click()");
+        Object.assign(urlInteractionResult, componentState);
+        urlInteractionResult.wheelForwarded = wheelForwarded;
+        urlInteractionResult.wheelEvents = wheelState.events;
+        urlInteractionResult.wheelScrollTop = wheelState.scrollTop;
+        urlInteractionResult.rightMoveForwarded = rightMoveForwarded;
+        urlInteractionResult.rightInputForwarded = rightInputForwarded;
+        if (componentState.leftClickCount < 1 || componentState.trustedClickCount < 1 || !componentState.checkboxChecked ||
+            componentState.checkboxChanges < 1 || componentState.trustedCheckboxChanges < 1 || componentState.keyboardValue !== "aba" ||
+            !componentState.detailsOpen || componentState.selectValue !== "two" || urlInteractionResult.pointerCursor !== "pointer" ||
+            urlInteractionResult.previewPointerCursor !== "pointer" || urlInteractionResult.textCursor !== "text" ||
+            urlInteractionResult.previewTextCursor !== "text" || !wheelForwarded || wheelState.events < 1 || wheelState.scrollTop <= 0 ||
+            rightMoveForwarded || rightInputForwarded) {
+          throw new Error(`URL input relay failed: ${JSON.stringify(urlInteractionResult)}`);
+        }
+        const urlNonCropResult = JSON.parse(await mainWindow.webContents.executeJavaScript(`
+          (async () => {
+            const scaling = document.getElementById("scalingMode");
+            const interaction = document.getElementById("urlInteractionBtn");
+            scaling.value = "fit";
+            scaling.dispatchEvent(new Event("change", { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 80));
+            const available = !interaction.disabled;
+            interaction.click();
+            await new Promise((resolve) => setTimeout(resolve, 80));
+            const accepted = interaction.getAttribute("aria-pressed") === "true";
+            interaction.click();
+            return JSON.stringify({ available, accepted });
+          })()
+        `));
+        if (!urlNonCropResult.available || !urlNonCropResult.accepted) {
+          throw new Error(`URL non-crop interaction gating failed: ${JSON.stringify(urlNonCropResult)}`);
+        }
+        const urlTransparentResult = {};
+        await mainWindow.webContents.executeJavaScript(`
+          (() => {
+            const transparent = document.getElementById("urlTransparent");
+            transparent.checked = false;
+            transparent.dispatchEvent(new Event("change", { bubbles: true }));
+          })()
+        `);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        const offStatus = await mainWindow.webContents.executeJavaScript("window.ndiBridge.getUrlStatus()");
+        urlTransparentResult.off = offStatus.transparentBackground === false;
+        urlTransparentResult.offBackground = await urlSourceWindow.webContents.executeJavaScript("getComputedStyle(document.body).backgroundColor");
+        await mainWindow.webContents.executeJavaScript(`
+          (() => {
+            const transparent = document.getElementById("urlTransparent");
+            transparent.checked = true;
+            transparent.dispatchEvent(new Event("change", { bubbles: true }));
+          })()
+        `);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        const onStatus = await mainWindow.webContents.executeJavaScript("window.ndiBridge.getUrlStatus()");
+        urlTransparentResult.on = onStatus.transparentBackground === true;
+        urlTransparentResult.onBackground = await urlSourceWindow.webContents.executeJavaScript("getComputedStyle(document.body).backgroundColor");
+        if (!urlTransparentResult.off || !urlTransparentResult.on || urlTransparentResult.offBackground === urlTransparentResult.onBackground) {
+          throw new Error(`URL transparent-background toggle failed: ${JSON.stringify(urlTransparentResult)}`);
+        }
         const refreshBeforeSequence = BigInt(urlFrame.sequence);
         const urlRefreshRequested = await mainWindow.webContents.executeJavaScript(`window.ndiBridge.refreshUrl()`);
         let refreshedFrame = null;
@@ -943,8 +1470,12 @@ function createWindow() {
           privateUrlBlocked,
           gpuSharedTextureProbe,
           videoConverterResult,
+          externalUrlResult,
           soakResult,
-          urlModeResult
+          urlModeResult,
+          urlInteractionResult,
+          urlNonCropResult,
+          urlTransparentResult
           ,urlRefreshRequested
           ,gpuUrlPresenterStatus
         };
@@ -1252,6 +1783,25 @@ ipcMain.handle("url:setViewport", (event, viewport) => {
   sendUrlStatus({ width, height, viewportMode: viewport && viewport.mode || "custom" });
   urlSourceWindow.webContents.invalidate();
   return true;
+});
+ipcMain.handle("url:setInteraction", (event, enabled) => {
+  if (!isTrustedSender(event) || !urlSourceWindow || urlSourceWindow.isDestroyed()) return false;
+  const requested = Boolean(enabled);
+  urlInteractionEnabled = requested && ensureUrlInputDebugger(urlSourceWindow);
+  if (!urlInteractionEnabled && urlSourceWindow.webContents.debugger.isAttached()) {
+    try { urlSourceWindow.webContents.debugger.detach(); } catch (_) {}
+  }
+  sendUrlStatus({ interactive: urlInteractionEnabled, cursor: "default" });
+  logger.write("info", "url", "interaction", { enabled: urlInteractionEnabled });
+  return urlInteractionEnabled;
+});
+ipcMain.handle("url:setTransparent", async (event, enabled) => {
+  if (!isTrustedSender(event)) return false;
+  return applyUrlTransparentBackground(enabled);
+});
+ipcMain.on("url:input", (event, input) => {
+  if (!isTrustedSender(event)) return;
+  sendUrlInputEvent(input);
 });
 ipcMain.handle("source:activateLocal", (event) => {
   if (!isTrustedSender(event)) throw new Error("Unauthorized IPC sender.");
